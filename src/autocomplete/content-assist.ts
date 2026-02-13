@@ -1,7 +1,7 @@
 import { IToken, TokenType } from "chevrotain";
 import { parser } from "../parser/parser";
 import { QuestDBLexer } from "../parser/lexer";
-import { parseToAst } from "../api";
+import { parseToAst } from "../index";
 
 // =============================================================================
 // Types
