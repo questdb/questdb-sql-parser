@@ -493,21 +493,21 @@ class QuestDBParser extends CstParser {
     this.OPTION1(() => {
       this.CONSUME(From);
       this.SUBRULE(this.fromClause);
+      this.OPTION2(() => this.SUBRULE(this.whereClause));
+      this.OPTION3(() => this.SUBRULE(this.sampleByClause));
+      this.OPTION4(() => this.SUBRULE(this.latestOnClause));
+      this.OPTION5(() => this.SUBRULE(this.groupByClause));
+      // PIVOT clause: SELECT * FROM t PIVOT (agg FOR col IN (...))
+      this.OPTION9(() => {
+        this.CONSUME(Pivot);
+        this.CONSUME(LParen);
+        this.SUBRULE(this.pivotBody);
+        this.CONSUME(RParen);
+      });
+      this.OPTION6(() => this.SUBRULE(this.orderByClause));
+      this.OPTION8(() => this.SUBRULE(this.windowDefinitionClause));
+      this.OPTION7(() => this.SUBRULE(this.limitClause));
     });
-    this.OPTION2(() => this.SUBRULE(this.whereClause));
-    this.OPTION3(() => this.SUBRULE(this.sampleByClause));
-    this.OPTION4(() => this.SUBRULE(this.latestOnClause));
-    this.OPTION5(() => this.SUBRULE(this.groupByClause));
-    // PIVOT clause: SELECT * FROM t PIVOT (agg FOR col IN (...))
-    this.OPTION9(() => {
-      this.CONSUME(Pivot);
-      this.CONSUME(LParen);
-      this.SUBRULE(this.pivotBody);
-      this.CONSUME(RParen);
-    });
-    this.OPTION6(() => this.SUBRULE(this.orderByClause));
-    this.OPTION8(() => this.SUBRULE(this.windowDefinitionClause));
-    this.OPTION7(() => this.SUBRULE(this.limitClause));
   });
 
   private setOperation = this.RULE("setOperation", () => {
