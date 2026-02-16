@@ -105,7 +105,7 @@ const allGeneratedTokens = new Map<string, TokenType>([
 //   Clauses:     Group, Order, Asc, Desc, Limit, Sample, Latest, Window,
 //                Union, Intersect, Except, Pivot, Unpivot, Lock, Truncate
 
-const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
+export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   // Data type keywords
   "Symbol",
   "Timestamp",

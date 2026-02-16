@@ -2,6 +2,7 @@ import { type ILexingError, IToken, TokenType } from "chevrotain"
 import { parser } from "../parser/parser"
 import { QuestDBLexer } from "../parser/lexer"
 import { parseToAst } from "../index"
+import { IDENTIFIER_KEYWORD_TOKENS } from "./token-classification"
 
 // =============================================================================
 // Types
@@ -159,36 +160,65 @@ function extractTables(fullSql: string, tokens: IToken[]): TableRef[] {
   }
 
   // Fallback: extract from tokens by looking for table name patterns
-  // Look for Identifier tokens that follow FROM or JOIN tokens
+  // Handles malformed input where full AST extraction is not available.
   const tables: TableRef[] = []
-  for (let i = 0; i < tokens.length - 1; i++) {
-    const tokenName = tokens[i].tokenType.name
-    const nextToken = tokens[i + 1]
+  const TABLE_PREFIX_TOKENS = new Set(["From", "Join", "Update", "Into"])
+  const isIdentifierLike = (token: IToken | undefined): token is IToken =>
+    !!token &&
+    (token.tokenType.name === "Identifier" ||
+      token.tokenType.name === "QuotedIdentifier" ||
+      IDENTIFIER_KEYWORD_TOKENS.has(token.tokenType.name))
 
-    if (
-      (tokenName === "From" ||
-        tokenName === "Join" ||
-        tokenName === "AsofJoin" ||
-        tokenName === "SpliceJoin" ||
-        tokenName === "LtJoin" ||
-        tokenName === "CrossJoin" ||
-        tokenName === "Update" ||
-        tokenName === "Into") &&
-      nextToken.tokenType.name === "Identifier"
-    ) {
-      const tableName = nextToken.image
-      // Check for alias (Identifier following the table name)
-      if (i + 2 < tokens.length) {
-        const maybeAlias = tokens[i + 2]
-        if (maybeAlias.tokenType.name === "Identifier") {
-          tables.push({ table: tableName, alias: maybeAlias.image })
-        } else {
-          tables.push({ table: tableName })
-        }
-      } else {
-        tables.push({ table: tableName })
-      }
+  const tokenToNamePart = (token: IToken): string => {
+    if (token.tokenType.name === "QuotedIdentifier") {
+      return token.image.slice(1, -1)
     }
+    return token.image
+  }
+
+  const readQualifiedName = (
+    startIndex: number,
+  ): { name: string; nextIndex: number } | null => {
+    const first = tokens[startIndex]
+    if (!isIdentifierLike(first)) return null
+
+    const parts = [tokenToNamePart(first)]
+    let i = startIndex + 1
+
+    while (
+      i + 1 < tokens.length &&
+      tokens[i].tokenType.name === "Dot" &&
+      isIdentifierLike(tokens[i + 1])
+    ) {
+      parts.push(tokenToNamePart(tokens[i + 1]))
+      i += 2
+    }
+
+    return { name: parts.join("."), nextIndex: i }
+  }
+
+  for (let i = 0; i < tokens.length; i++) {
+    if (!TABLE_PREFIX_TOKENS.has(tokens[i].tokenType.name)) continue
+
+    const tableNameResult = readQualifiedName(i + 1)
+    if (!tableNameResult) continue
+
+    let alias: string | undefined
+    let aliasStart = tableNameResult.nextIndex
+    if (tokens[aliasStart]?.tokenType.name === "As") {
+      aliasStart++
+    }
+    if (isIdentifierLike(tokens[aliasStart])) {
+      alias = tokenToNamePart(tokens[aliasStart])
+    }
+
+    tables.push({
+      table: tableNameResult.name,
+      alias,
+    })
+
+    // Continue from where we consumed table/alias to avoid duplicate captures.
+    i = alias ? aliasStart : tableNameResult.nextIndex - 1
   }
 
   return tables
@@ -227,18 +257,27 @@ function isImplicitStatementPath(
  *
  * Example: [SELECT, t, ., col] → [SELECT, col]
  */
+/**
+ * Check if a token type name represents an identifier-like token.
+ * This includes plain Identifier, QuotedIdentifier, and any keyword
+ * that has the IdentifierKeyword category (e.g., Timestamp, Index, Type).
+ */
+function isIdentifierLikeTokenName(name: string): boolean {
+  return (
+    name === "Identifier" ||
+    name === "QuotedIdentifier" ||
+    name === "IdentifierKeyword" ||
+    IDENTIFIER_KEYWORD_TOKENS.has(name)
+  )
+}
+
 function collapseTrailingQualifiedRef(tokens: IToken[]): IToken[] | null {
   if (tokens.length < 3) return null
 
   // Walk backwards from end: expect Identifier (. Identifier)+ pattern
   const i = tokens.length - 1
   const lastToken = tokens[i]
-  const lastType = lastToken.tokenType.name
-  if (
-    lastType !== "Identifier" &&
-    lastType !== "QuotedIdentifier" &&
-    lastType !== "IdentifierKeyword"
-  ) {
+  if (!isIdentifierLikeTokenName(lastToken.tokenType.name)) {
     return null
   }
 
@@ -248,13 +287,7 @@ function collapseTrailingQualifiedRef(tokens: IToken[]): IToken[] | null {
     const maybeDot = tokens[start - 1]
     const maybeIdent = tokens[start - 2]
     if (maybeDot.tokenType.name !== "Dot") break
-    const identType = maybeIdent.tokenType.name
-    if (
-      identType !== "Identifier" &&
-      identType !== "QuotedIdentifier" &&
-      identType !== "IdentifierKeyword"
-    )
-      break
+    if (!isIdentifierLikeTokenName(maybeIdent.tokenType.name)) break
     start -= 2
   }
 
@@ -351,6 +384,32 @@ function computeSuggestions(tokens: IToken[]): TokenType[] {
 }
 
 /**
+ * When tablesInScope is empty (no FROM/JOIN yet), try to infer a table name
+ * from a trailing qualified reference before the cursor.
+ * e.g. "SELECT trades." → infer "trades" as table in scope.
+ */
+function inferTableFromQualifiedRef(
+  tokensBefore: IToken[],
+  isMidWord: boolean,
+): TableRef | null {
+  // If mid-word, the last token is a partial column name — look before it.
+  const effective = isMidWord ? tokensBefore.slice(0, -1) : tokensBefore
+  const lastIdx = effective.length - 1
+  if (lastIdx < 1) return null
+  if (effective[lastIdx].tokenType.name !== "Dot") return null
+
+  const tableToken = effective[lastIdx - 1]
+  if (!isIdentifierLikeTokenName(tableToken.tokenType.name)) return null
+
+  const table =
+    tableToken.tokenType.name === "QuotedIdentifier"
+      ? tableToken.image.slice(1, -1)
+      : tableToken.image
+
+  return { table }
+}
+
+/**
  * Get content assist suggestions for a SQL string at a given cursor position
  *
  * @param fullSql - The complete SQL string
@@ -423,6 +482,11 @@ export function getContentAssist(
   // Extract tables from the full query
   const fullTokens = QuestDBLexer.tokenize(fullSql).tokens
   const tablesInScope = extractTables(fullSql, fullTokens)
+
+  if (tablesInScope.length === 0) {
+    const inferred = inferTableFromQualifiedRef(tokens, isMidWord)
+    if (inferred) tablesInScope.push(inferred)
+  }
 
   return {
     nextTokenTypes,

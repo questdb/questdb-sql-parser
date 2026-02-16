@@ -104,15 +104,13 @@
     "skipAutocomplete": true
   },
   {
-    "query": "SELECT /*+ asof_dense(orders md) */\n    orders.timestamp, orders.symbol, orders.price\nFROM orders\nASOF JOIN (md) ON (symbol)",
-    "skipAutocomplete": true
+    "query": "SELECT /*+ asof_dense(orders md) */\n    orders.timestamp, orders.symbol, orders.price\nFROM orders\nASOF JOIN (md) ON (symbol)"
   },
   {
     "query": "SELECT /*+ asof_linear(orders md) */\n  orders.ts, orders.price, md.md_ts, md.bid, md.ask\nFROM orders\nASOF JOIN (\n  SELECT ts as md_ts, bid, ask FROM market_data\n  WHERE state = 'INVALID' -- Highly selective filter\n) md"
   },
   {
-    "query": "SELECT /*+ asof_memoized(orders md) */\n    orders.timestamp, orders.symbol, orders.price\nFROM orders\nASOF JOIN (md) ON (symbol)",
-    "skipAutocomplete": true
+    "query": "SELECT /*+ asof_memoized(orders md) */\n    orders.timestamp, orders.symbol, orders.price\nFROM orders\nASOF JOIN (md) ON (symbol)"
   },
   {
     "query": "EXPLAIN SELECT  *\nFROM core_price\nASOF JOIN market_data\nON symbol\nWHERE bids[1,1]=107.03 -- Highly selective filter"
@@ -208,12 +206,10 @@
     "query": "SELECT * FROM trades_ohlc_15m\nWHERE timestamp IN today()"
   },
   {
-    "query": "CREATE MATERIALIZED VIEW trades_with_metadata AS\nSELECT\n  t.timestamp,\n  t.symbol,\n  m.description,\n  sum(t.amount) AS volume\nFROM trades t\nJOIN instruments m ON t.symbol = m.symbol\nSAMPLE BY 1h",
-    "skipAutocomplete": true
+    "query": "CREATE MATERIALIZED VIEW trades_with_metadata AS\nSELECT\n  t.timestamp,\n  t.symbol,\n  m.description,\n  sum(t.amount) AS volume\nFROM trades t\nJOIN instruments m ON t.symbol = m.symbol\nSAMPLE BY 1h"
   },
   {
-    "query": "CREATE MATERIALIZED VIEW enriched_trades AS\nSELECT\n  t.timestamp,\n  t.symbol,\n  t.price,\n  t.amount,\n  h.hourly_vwap    -- aggregated value from another table\nFROM trades t\nASOF JOIN hourly_stats h ON t.symbol = h.symbol;",
-    "skipAutocomplete": true
+    "query": "CREATE MATERIALIZED VIEW enriched_trades AS\nSELECT\n  t.timestamp,\n  t.symbol,\n  t.price,\n  t.amount,\n  h.hourly_vwap    -- aggregated value from another table\nFROM trades t\nASOF JOIN hourly_stats h ON t.symbol = h.symbol"
   },
   {
     "query": "CREATE MATERIALIZED VIEW trades_hourly AS\nSELECT\n  timestamp,\n  symbol,\n  avg(price) AS avg_price,\n  sum(amount) AS volume\nFROM trades\nSAMPLE BY 1h"
@@ -511,8 +507,7 @@
     "query": "SELECT string_agg(concat('avg(', table_name, '.value)'), ',') as columns\nFROM tables()\nWHERE table_name LIKE 'sensor_%'"
   },
   {
-    "query": "SELECT sensor_1.timestamp, avg(sensor_1.value),avg(sensor_2.value),avg(sensor_3.value),avg(sensor_4.value)\nFROM sensor_1 ASOF JOIN sensor_2 ASOF JOIN sensor_3 ASOF JOIN sensor_4\nSAMPLE BY 1s FROM cast(1571176800000000 as timestamp) TO cast(1571349600000000 as timestamp) FILL(PREV)",
-    "skipAutocomplete": true
+    "query": "SELECT sensor_1.timestamp, avg(sensor_1.value),avg(sensor_2.value),avg(sensor_3.value),avg(sensor_4.value)\nFROM sensor_1 ASOF JOIN sensor_2 ASOF JOIN sensor_3 ASOF JOIN sensor_4\nSAMPLE BY 1s FROM cast(1571176800000000 as timestamp) TO cast(1571349600000000 as timestamp) FILL(PREV)"
   },
   {
     "query": "SELECT table_name FROM tables() WHERE table_name LIKE 'sensor_%'"
@@ -609,8 +604,7 @@
     "query": "SELECT timestamp, bid_price,\n  min(bid_price) OVER (ORDER BY timestamp RANGE 1 second PRECEDING) AS min_price,\n  max(bid_price) OVER (ORDER BY timestamp RANGE 1 second PRECEDING) AS max_price\nFROM core_price\nWHERE timestamp IN '$now - 1m..$now' AND symbol = 'EURUSD'"
   },
   {
-    "query": "SELECT p.timestamp, p.bid_price,\n  min(pp.bid_price) AS min_price,\n  max(pp.bid_price) AS max_price\nFROM core_price p\nWINDOW JOIN core_price pp ON symbol\n  RANGE BETWEEN 1 second PRECEDING AND 1 second FOLLOWING\nWHERE p.timestamp IN '$now - 1m..$now' AND p.symbol = 'EURUSD'",
-    "skipAutocomplete": true
+    "query": "SELECT p.timestamp, p.bid_price,\n  min(pp.bid_price) AS min_price,\n  max(pp.bid_price) AS max_price\nFROM core_price p\nWINDOW JOIN core_price pp ON symbol\n  RANGE BETWEEN 1 second PRECEDING AND 1 second FOLLOWING\nWHERE p.timestamp IN '$now - 1m..$now' AND p.symbol = 'EURUSD'"
   },
   {
     "query": "SELECT timestamp, symbol, SUM(bid_volume) AS total_bid\nFROM core_price\nWHERE timestamp IN '$today'\nSAMPLE BY 1m\nLIMIT 20"
@@ -818,12 +812,10 @@
     "query": "SELECT\n    dateadd('m', 15, timestamp) AS timestamp, symbol,\n    first(price) AS open,\n    last(price) AS close,\n    min(price),\n    max(price),\n    sum(quantity) AS volume\nFROM fx_trades\nWHERE symbol = 'EURUSD' AND timestamp IN '$today'\nSAMPLE BY 15m"
   },
   {
-    "query": "WITH prevEvents AS (\n  SELECT *,\n    lag(lock_status::int) -- lag doesn't support booleans, so we convert to 1 or 0\n      OVER (PARTITION BY vehicle_id ORDER BY timestamp) as prev_status\n  FROM vehicle_events\n  WHERE timestamp IN '$today'\n),\nride_sessions AS (\n  SELECT *,\n    SUM(CASE\n      WHEN lock_status = true AND prev_status = 0 THEN 1\n      WHEN lock_status = false AND prev_status = 1 THEN 1\n      ELSE 0\n    END) OVER (PARTITION BY vehicle_id ORDER BY timestamp) as ride\n  FROM prevEvents\n),\nglobal_sessions AS (\n  SELECT *, concat(vehicle_id, '#', ride) as session\n  FROM ride_sessions\n),\ntotals AS (\n  SELECT\n    first(timestamp) as ts,\n    session,\n    FIRST(lock_status) as lock_status,\n    first(vehicle_id) as vehicle_id\n  FROM global_sessions\n  GROUP BY session\n),\nprev_ts AS (\n  SELECT *,\n    lag(timestamp) OVER (PARTITION BY vehicle_id ORDER BY timestamp) as prev_ts\n  FROM totals\n)\nSELECT\n  timestamp as ride_end,\n  vehicle_id,\n  datediff('s', prev_ts, timestamp) as duration_seconds\nFROM prev_ts\nWHERE lock_status = false AND prev_ts IS NOT NULL;",
-    "skipAutocomplete": true
+    "query": "WITH prevEvents AS (\n  SELECT *,\n    lag(lock_status::int) -- lag doesn't support booleans, so we convert to 1 or 0\n      OVER (PARTITION BY vehicle_id ORDER BY timestamp) as prev_status\n  FROM vehicle_events\n  WHERE timestamp IN '$today'\n),\nride_sessions AS (\n  SELECT *,\n    SUM(CASE\n      WHEN lock_status = true AND prev_status = 0 THEN 1\n      WHEN lock_status = false AND prev_status = 1 THEN 1\n      ELSE 0\n    END) OVER (PARTITION BY vehicle_id ORDER BY timestamp) as ride\n  FROM prevEvents\n),\nglobal_sessions AS (\n  SELECT *, concat(vehicle_id, '#', ride) as session\n  FROM ride_sessions\n),\ntotals AS (\n  SELECT\n    first(timestamp) as ts,\n    session,\n    FIRST(lock_status) as lock_status,\n    first(vehicle_id) as vehicle_id\n  FROM global_sessions\n  GROUP BY session\n),\nprev_ts AS (\n  SELECT *,\n    lag(timestamp) OVER (PARTITION BY vehicle_id ORDER BY timestamp) as prev_ts\n  FROM totals\n)\nSELECT\n  timestamp as ride_end,\n  vehicle_id,\n  datediff('s', prev_ts, timestamp) as duration_seconds\nFROM prev_ts\nWHERE lock_status = false AND prev_ts IS NOT NULL"
   },
   {
-    "query": "WITH prevEvents AS (\n  SELECT *,\n    lag(lock_status::int) -- lag doesn't support booleans, so we convert to 1 or 0\n      OVER (PARTITION BY vehicle_id ORDER BY timestamp) as prev_status\n  FROM vehicle_events\n  WHERE timestamp IN '$now - 3M..$now'\n),\nride_sessions AS (\n  SELECT *,\n    SUM(CASE\n      WHEN lock_status = true AND prev_status = 0 THEN 1\n      WHEN lock_status = false AND prev_status = 1 THEN 1\n      ELSE 0\n    END) OVER (PARTITION BY vehicle_id ORDER BY timestamp) as ride\n  FROM prevEvents\n),\nglobal_sessions AS (\n  SELECT *, concat(vehicle_id, '#', ride) as session\n  FROM ride_sessions\n),\ntotals AS (\n  SELECT\n    first(timestamp) as ts,\n    session,\n    FIRST(lock_status) as lock_status,\n    first(vehicle_id) as vehicle_id\n  FROM global_sessions\n  GROUP BY session\n),\nprev_ts AS (\n  SELECT *,\n    lag(timestamp) OVER (PARTITION BY vehicle_id ORDER BY timestamp) as prev_ts\n  FROM totals\n)\nSELECT\n  timestamp_floor('M', timestamp) as month,\n  vehicle_id,\n  SUM(datediff('s', prev_ts, timestamp)) as total_ride_duration_seconds,\n  COUNT(*) as ride_count\nFROM prev_ts\nWHERE lock_status = false AND prev_ts IS NOT NULL\nGROUP BY month, vehicle_id\nORDER BY month, vehicle_id;",
-    "skipAutocomplete": true
+    "query": "WITH prevEvents AS (\n  SELECT *,\n    lag(lock_status::int) -- lag doesn't support booleans, so we convert to 1 or 0\n      OVER (PARTITION BY vehicle_id ORDER BY timestamp) as prev_status\n  FROM vehicle_events\n  WHERE timestamp IN '$now - 3M..$now'\n),\nride_sessions AS (\n  SELECT *,\n    SUM(CASE\n      WHEN lock_status = true AND prev_status = 0 THEN 1\n      WHEN lock_status = false AND prev_status = 1 THEN 1\n      ELSE 0\n    END) OVER (PARTITION BY vehicle_id ORDER BY timestamp) as ride\n  FROM prevEvents\n),\nglobal_sessions AS (\n  SELECT *, concat(vehicle_id, '#', ride) as session\n  FROM ride_sessions\n),\ntotals AS (\n  SELECT\n    first(timestamp) as ts,\n    session,\n    FIRST(lock_status) as lock_status,\n    first(vehicle_id) as vehicle_id\n  FROM global_sessions\n  GROUP BY session\n),\nprev_ts AS (\n  SELECT *,\n    lag(timestamp) OVER (PARTITION BY vehicle_id ORDER BY timestamp) as prev_ts\n  FROM totals\n)\nSELECT\n  timestamp_floor('M', timestamp) as month,\n  vehicle_id,\n  SUM(datediff('s', prev_ts, timestamp)) as total_ride_duration_seconds,\n  COUNT(*) as ride_count\nFROM prev_ts\nWHERE lock_status = false AND prev_ts IS NOT NULL\nGROUP BY month, vehicle_id\nORDER BY month, vehicle_id"
   },
   {
     "query": "CREATE TABLE vehicle_events (\n  vehicle_id SYMBOL,\n  lock_status BOOLEAN,\n  timestamp TIMESTAMP\n) TIMESTAMP(timestamp) PARTITION BY DAY"
@@ -2315,8 +2307,7 @@
     "query": "SELECT * FROM read_parquet('/var/lib/questdb/import/trades.parquet')"
   },
   {
-    "query": "SELECT t.symbol, t.price, r.label\nFROM read_parquet('trades.parquet') t\nJOIN ref_data r ON t.symbol = r.symbol",
-    "skipAutocomplete": true
+    "query": "SELECT t.symbol, t.price, r.label\nFROM read_parquet('trades.parquet') t\nJOIN ref_data r ON t.symbol = r.symbol"
   },
   {
     "query": "SELECT 'quest' LIKE 'quest'"
@@ -3779,15 +3770,13 @@
     "query": "-- UserB becomes the new \"definer\"\nALTER VIEW my_view AS (SELECT * FROM table2)"
   },
   {
-    "query": "SELECT * FROM my_view;",
-    "skipAutocomplete": true
+    "query": "SELECT * FROM my_view"
   },
   {
     "query": "-- Grant ALTER VIEW permission\nGRANT ALTER VIEW ON my_view TO username"
   },
   {
-    "query": "-- This fails if user doesn't have SELECT on secret_table\nALTER VIEW my_view AS (SELECT * FROM secret_table);\n-- Error: Access denied for username [SELECT on secret_table]",
-    "skipAutocomplete": true
+    "query": "-- This fails if user doesn't have SELECT on secret_table\nALTER VIEW my_view AS (SELECT * FROM secret_table)"
   },
   {
     "query": "SELECT timestamp, symbol, bids[1,1] as best_bid_price\nFROM\n market_data limit 20"
@@ -3796,12 +3785,10 @@
     "query": "select timestamp, symbol, bid_price from\ncore_price limit 20"
   },
   {
-    "query": "SELECT\n  m.timestamp, m.symbol, bids[1,1] AS best_bid_price,\n  p.timestamp, p.symbol, p.bid_price\nFROM\n  market_data m ASOF JOIN core_price p\nLIMIT 20",
-    "skipAutocomplete": true
+    "query": "SELECT\n  m.timestamp, m.symbol, bids[1,1] AS best_bid_price,\n  p.timestamp, p.symbol, p.bid_price\nFROM\n  market_data m ASOF JOIN core_price p\nLIMIT 20"
   },
   {
-    "query": "SELECT\n  m.timestamp, m.symbol, bids[1,1] AS best_bid_price,\n  p.timestamp, p.symbol, p.bid_price\nFROM\n  market_data m ASOF JOIN core_price p\nON (symbol)\nLIMIT 20",
-    "skipAutocomplete": true
+    "query": "SELECT\n  m.timestamp, m.symbol, bids[1,1] AS best_bid_price,\n  p.timestamp, p.symbol, p.bid_price\nFROM\n  market_data m ASOF JOIN core_price p\nON (symbol)\nLIMIT 20"
   },
   {
     "query": "SELECT *\nFROM market_subset ASOF JOIN core_price ON (symbol)"
@@ -3813,8 +3800,7 @@
     "query": "SELECT *\nFROM (\n      (SELECT * from read_parquet('trades.parquet') )\n      timestamp(timestamp)\n      )\nASOF JOIN trades ON (symbol)"
   },
   {
-    "query": "SELECT market_data.timestamp, market_data.symbol, bids, core_price.*\nFROM market_data\nASOF JOIN core_price ON (symbol) TOLERANCE 50T\nWHERE market_data.timestamp IN today()",
-    "skipAutocomplete": true
+    "query": "SELECT market_data.timestamp, market_data.symbol, bids, core_price.*\nFROM market_data\nASOF JOIN core_price ON (symbol) TOLERANCE 50T\nWHERE market_data.timestamp IN today()"
   },
   {
     "query": "SELECT status, progress_percent FROM backups() ORDER BY start_ts DESC LIMIT 1"
@@ -3850,35 +3836,28 @@
     "query": "SELECT\n    (3.5 + 2)::INT,\n    7234623::SHORT,\n    2334444.323::SHORT"
   },
   {
-    "query": "COMPILE VIEW view_name",
-    "skipAutocomplete": true
+    "query": "COMPILE VIEW view_name"
   },
   {
-    "query": "COMPILE VIEW my_view",
-    "skipAutocomplete": true
+    "query": "COMPILE VIEW my_view"
   },
   {
     "query": "SELECT view_name, view_status, invalidation_reason\nFROM views()\nWHERE view_name = 'my_view'"
   },
   {
-    "query": "-- If invalid, fix the underlying issue, then compile\nCOMPILE VIEW my_view",
-    "skipAutocomplete": true
+    "query": "-- If invalid, fix the underlying issue, then compile\nCOMPILE VIEW my_view"
   },
   {
-    "query": "SELECT view_status FROM views() WHERE view_name = 'my_view';",
-    "skipAutocomplete": true
+    "query": "SELECT view_status FROM views() WHERE view_name = 'my_view'"
   },
   {
-    "query": "-- Compile each view after fixing underlying issues\nCOMPILE VIEW view1",
-    "skipAutocomplete": true
+    "query": "-- Compile each view after fixing underlying issues\nCOMPILE VIEW view1"
   },
   {
-    "query": "COMPILE VIEW view2",
-    "skipAutocomplete": true
+    "query": "COMPILE VIEW view2"
   },
   {
-    "query": "COMPILE VIEW view3",
-    "skipAutocomplete": true
+    "query": "COMPILE VIEW view3"
   },
   {
     "query": "-- Grant COMPILE VIEW permission\nGRANT COMPILE VIEW ON my_view TO username"
@@ -3956,8 +3935,7 @@
     "query": "CREATE MATERIALIZED VIEW trades_daily\nREFRESH MANUAL PERIOD (LENGTH 1d TIME ZONE 'UTC' DELAY 1h) AS\nSELECT timestamp, symbol, avg(price) AS avg_price FROM trades SAMPLE BY 1d"
   },
   {
-    "query": "CREATE MATERIALIZED VIEW trades_with_metadata\nWITH BASE trades AS\nSELECT\n  t.timestamp,\n  t.symbol,\n  m.description,\n  avg(t.price) AS avg_price\nFROM trades t\nJOIN instruments m ON t.symbol = m.symbol\nSAMPLE BY 1h",
-    "skipAutocomplete": true
+    "query": "CREATE MATERIALIZED VIEW trades_with_metadata\nWITH BASE trades AS\nSELECT\n  t.timestamp,\n  t.symbol,\n  m.description,\n  avg(t.price) AS avg_price\nFROM trades t\nJOIN instruments m ON t.symbol = m.symbol\nSAMPLE BY 1h"
   },
   {
     "query": "CREATE MATERIALIZED VIEW trades_hourly AS (\n  SELECT timestamp, symbol, avg(price) AS avg_price FROM trades SAMPLE BY 1h\n) PARTITION BY DAY"
@@ -4080,8 +4058,7 @@
     "query": "CREATE VIEW high_value_trades AS (\n  SELECT ts, symbol, price, quantity\n  FROM trades\n  WHERE price * quantity > 10000\n)"
   },
   {
-    "query": "CREATE VIEW enriched_trades AS (\n  SELECT t.ts, t.symbol, t.price, m.company_name\n  FROM trades t\n  JOIN metadata m ON t.symbol = m.symbol\n)",
-    "skipAutocomplete": true
+    "query": "CREATE VIEW enriched_trades AS (\n  SELECT t.ts, t.symbol, t.price, m.company_name\n  FROM trades t\n  JOIN metadata m ON t.symbol = m.symbol\n)"
   },
   {
     "query": "CREATE VIEW all_markets AS (\n  SELECT ts, symbol, price FROM nyse_trades\n  UNION ALL\n  SELECT ts, symbol, price FROM nasdaq_trades\n)"
@@ -4309,12 +4286,10 @@
     "query": "SELECT * from t CROSS JOIN t AS t2\nWHERE t.timestamp < t2.timestamp\n  AND datediff('s', t.timestamp , t2.timestamp ) < 10\n  AND t.symbol = t2.symbol\n  AND t.side = t2.side\n  AND t.price = t2.price\n  AND t.amount = t2.amount"
   },
   {
-    "query": "SELECT tradesA.timestamp, tradesB.timestamp, tradesA.price\nFROM miniTrades tradesA\nLT JOIN miniTrades tradesB",
-    "skipAutocomplete": true
+    "query": "SELECT tradesA.timestamp, tradesB.timestamp, tradesA.price\nFROM miniTrades tradesA\nLT JOIN miniTrades tradesB"
   },
   {
-    "query": "WITH\nbuy AS (  -- select the first 5 buys in June 22\n  SELECT timestamp, price FROM trades\n  WHERE timestamp IN '2024-06-22' AND side = 'buy' LIMIT 2\n),\nsell AS ( -- select the first 5 sells in June 22\n  SELECT timestamp, price FROM trades\n  WHERE timestamp IN '2024-06-22' AND side = 'sell' LIMIT 2\n)\nSELECT\n  buy.timestamp, sell.timestamp, buy.price, sell.price\nFROM buy\nSPLICE JOIN sell",
-    "skipAutocomplete": true
+    "query": "WITH\nbuy AS (  -- select the first 5 buys in June 22\n  SELECT timestamp, price FROM trades\n  WHERE timestamp IN '2024-06-22' AND side = 'buy' LIMIT 2\n),\nsell AS ( -- select the first 5 sells in June 22\n  SELECT timestamp, price FROM trades\n  WHERE timestamp IN '2024-06-22' AND side = 'sell' LIMIT 2\n)\nSELECT\n  buy.timestamp, sell.timestamp, buy.price, sell.price\nFROM buy\nSPLICE JOIN sell"
   },
   {
     "query": "SELECT *\nFROM ManyTrades\nLEFT JOIN Lookup\n  ON Lookup.symbol = Manytrades.symbol"
@@ -4486,8 +4461,7 @@
     "query": "-- Rebuild the view\nREFRESH MATERIALIZED VIEW trades_hourly FULL"
   },
   {
-    "query": "-- Verify it's valid again\nSELECT view_name, view_status\nFROM materialized_views()\nWHERE view_name = 'trades_hourly';",
-    "skipAutocomplete": true
+    "query": "-- Verify it's valid again\nSELECT view_name, view_status\nFROM materialized_views()\nWHERE view_name = 'trades_hourly'"
   },
   {
     "query": "CREATE MATERIALIZED VIEW daily_summary\nREFRESH MANUAL AS\nSELECT timestamp, symbol, sum(amount) AS volume\nFROM trades\nSAMPLE BY 1d"
@@ -4496,8 +4470,7 @@
     "query": "-- Refresh when ready (e.g., after batch load completes)\nREFRESH MATERIALIZED VIEW daily_summary INCREMENTAL"
   },
   {
-    "query": "-- Refresh just that day\nREFRESH MATERIALIZED VIEW trades_hourly\n  RANGE FROM '2025-05-01T00:00:00Z' TO '2025-05-02T00:00:00Z';",
-    "skipAutocomplete": true
+    "query": "-- Refresh just that day\nREFRESH MATERIALIZED VIEW trades_hourly\n  RANGE FROM '2025-05-01T00:00:00Z' TO '2025-05-02T00:00:00Z'"
   },
   {
     "query": "SELECT\n  view_name,\n  view_status,\n  refresh_base_table_txn,\n  base_table_txn,\n  last_refresh_start_timestamp,\n  last_refresh_finish_timestamp\nFROM materialized_views()\nWHERE view_name = 'trades_hourly'"
@@ -4755,8 +4728,7 @@
     "query": "UPDATE spreads s SET spread = p.ask - p.bid FROM prices p WHERE s.symbol = p.symbol"
   },
   {
-    "query": "WITH up AS (\n    SELECT p.ask - p.bid AS spread, p.timestamp\n    FROM prices p\n    JOIN instruments i ON p.symbol = i.symbol\n    WHERE i.type = 'BOND'\n)\nUPDATE spreads s\nSET spread = up.spread\nFROM up\nWHERE s.timestamp = up.timestamp",
-    "skipAutocomplete": true
+    "query": "WITH up AS (\n    SELECT p.ask - p.bid AS spread, p.timestamp\n    FROM prices p\n    JOIN instruments i ON p.symbol = i.symbol\n    WHERE i.type = 'BOND'\n)\nUPDATE spreads s\nSET spread = up.spread\nFROM up\nWHERE s.timestamp = up.timestamp"
   },
   {
     "query": "WITH up AS (\n    SELECT symbol, spread, ts\n    FROM temp_spreads\n    WHERE timestamp between '2022-01-02' and '2022-01-03'\n)\nUPDATE spreads s\nSET spread = up.spread\nFROM up\nWHERE up.ts = s.ts AND s.symbol = up.symbol"
