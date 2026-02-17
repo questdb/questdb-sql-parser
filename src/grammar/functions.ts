@@ -72,6 +72,7 @@ export const functions: string[] = [
   "string_agg",
   "string_distinct_agg",
   "sum",
+  "twap",
   "var_pop",
   "var_samp",
   "variance",
