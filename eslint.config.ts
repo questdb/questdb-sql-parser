@@ -7,7 +7,7 @@ import { Linter } from "eslint"
 
 export default [
   {
-    ignores: ["dist/", "node_modules/", "eslint.config.ts", "src/parser/cst-types.d.ts"],
+    ignores: ["dist/", "node_modules/", "eslint.config.ts", "tsup.config.ts", "src/parser/cst-types.d.ts"],
   },
   {
     files: ["**/*.{js,ts}"],
@@ -27,11 +27,11 @@ export default [
     },
   },
   {
-    files: ["src/**/*.ts"],
+    files: ["src/**/*.ts", "tests/**/*.ts"],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
-        project: "./tsconfig.json",
+        projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -79,6 +79,14 @@ export default [
       ],
       // NaN is used as a Chevrotain token name (SQL NaN keyword)
       "no-shadow-restricted-names": "off",
+    },
+  },
+  {
+    files: ["tests/**/*.ts"],
+    languageOptions: {
+      globals: {
+        ...globals.vitest,
+      },
     },
   },
 

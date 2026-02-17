@@ -1,4 +1,4 @@
-# questdb-sql-parser
+# @questdb/questdb-sql-parser
 
 A production-ready SQL parser for [QuestDB](https://questdb.io/) syntax, built with [Chevrotain](https://chevrotain.io/). Parses SQL into a fully typed AST, converts AST back to SQL, and provides context-aware autocomplete — all in a single package.
 
@@ -17,7 +17,7 @@ A production-ready SQL parser for [QuestDB](https://questdb.io/) syntax, built w
 ### Parse SQL to AST
 
 ```typescript
-import { parseToAst } from "questdb-sql-parser";
+import { parseToAst } from "@questdb/questdb-sql-parser";
 
 const result = parseToAst("SELECT * FROM trades WHERE symbol = 'BTC-USD'");
 
@@ -39,7 +39,7 @@ if (result.errors.length === 0) {
 ### Convert AST back to SQL
 
 ```typescript
-import { parseToAst, toSql } from "questdb-sql-parser";
+import { parseToAst, toSql } from "@questdb/questdb-sql-parser";
 
 const result = parseToAst("SELECT avg(price) FROM trades SAMPLE BY 1h FILL(PREV)");
 const sql = toSql(result.ast);
@@ -49,7 +49,7 @@ const sql = toSql(result.ast);
 ### Parse a single statement
 
 ```typescript
-import { parseOne } from "questdb-sql-parser";
+import { parseOne } from "@questdb/questdb-sql-parser";
 
 const stmt = parseOne("INSERT INTO trades VALUES (now(), 'BTC', 42000.50)");
 console.log(stmt.type); // "insert"
@@ -58,7 +58,7 @@ console.log(stmt.type); // "insert"
 ### Parse multiple statements
 
 ```typescript
-import { parseStatements } from "questdb-sql-parser";
+import { parseStatements } from "@questdb/questdb-sql-parser";
 
 const statements = parseStatements(`
   SELECT * FROM trades
@@ -72,7 +72,7 @@ console.log(statements.length); // 3
 ### Autocomplete
 
 ```typescript
-import { createAutocompleteProvider } from "questdb-sql-parser";
+import { createAutocompleteProvider } from "@questdb/questdb-sql-parser";
 
 const provider = createAutocompleteProvider({
   tables: [
@@ -204,7 +204,7 @@ The parser uses Chevrotain's [CST pattern](https://chevrotain.io/docs/guide/conc
 Arrays of keywords, functions, data types, operators, and constants for syntax highlighting integration:
 
 ```typescript
-import { keywords, functions, dataTypes, operators, constants } from "questdb-sql-parser";
+import { keywords, functions, dataTypes, operators, constants } from "@questdb/questdb-sql-parser/grammar";
 ```
 
 ## Development

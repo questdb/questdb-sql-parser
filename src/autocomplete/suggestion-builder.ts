@@ -138,7 +138,7 @@ export function buildSuggestions(
       label: keyword,
       kind,
       insertText: keyword,
-      filterText: name.toLowerCase(),
+      filterText: keyword.toLowerCase(),
       priority,
     })
   }
@@ -223,42 +223,10 @@ export function buildSuggestions(
         label: display,
         kind: SuggestionKind.Keyword,
         insertText: display,
-        filterText: name.toLowerCase(),
+        filterText: display.toLowerCase(),
         priority: SuggestionPriority.Low,
       })
     }
-  }
-
-  return suggestions
-}
-
-/**
- * Build fallback suggestions when parser can't determine valid tokens.
- * Returns all columns and tables as a generic fallback.
- */
-export function buildFallbackSuggestions(schema: SchemaInfo): Suggestion[] {
-  const suggestions: Suggestion[] = []
-
-  // Add all columns
-  const allColumns = getAllColumns(schema)
-  for (const col of allColumns) {
-    suggestions.push({
-      label: col.name,
-      kind: SuggestionKind.Column,
-      insertText: col.name,
-      detail: `${col.tableName}.${col.name} (${col.type})`,
-      priority: SuggestionPriority.High,
-    })
-  }
-
-  // Add all tables
-  for (const table of schema.tables) {
-    suggestions.push({
-      label: table.name,
-      kind: SuggestionKind.Table,
-      insertText: table.name,
-      priority: SuggestionPriority.MediumLow,
-    })
   }
 
   return suggestions

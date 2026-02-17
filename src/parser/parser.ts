@@ -1285,7 +1285,7 @@ class QuestDBParser extends CstParser {
     this.OPTION3(() => {
       this.CONSUME(Partition)
       this.CONSUME(By)
-      this.SUBRULE(this.partitionBy)
+      this.SUBRULE(this.partitionPeriod)
     })
 
     // Optional TTL (must come before WAL per Java order)
@@ -1618,13 +1618,7 @@ class QuestDBParser extends CstParser {
     () => {
       this.CONSUME(Partition)
       this.CONSUME(By)
-      this.OR([
-        { ALT: () => this.CONSUME(Year) },
-        { ALT: () => this.CONSUME(Month) },
-        { ALT: () => this.CONSUME(Week) },
-        { ALT: () => this.CONSUME(Day) },
-        { ALT: () => this.CONSUME(Hour) },
-      ])
+      this.SUBRULE(this.partitionPeriod)
       this.OPTION(() => {
         this.CONSUME(Ttl)
         this.CONSUME(NumberLiteral)
@@ -1694,7 +1688,7 @@ class QuestDBParser extends CstParser {
     })
   })
 
-  private partitionBy = this.RULE("partitionBy", () => {
+  private partitionPeriod = this.RULE("partitionPeriod", () => {
     this.OR([
       { ALT: () => this.CONSUME(None) },
       { ALT: () => this.CONSUME(Hour) },
@@ -2712,7 +2706,7 @@ class QuestDBParser extends CstParser {
             },
             { ALT: () => this.CONSUME(PartitionBy) },
           ])
-          this.SUBRULE(this.partitionBy)
+          this.SUBRULE(this.partitionPeriod)
         },
       },
       {

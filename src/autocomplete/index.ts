@@ -30,7 +30,4 @@ export {
 } from "./token-classification"
 
 // Suggestion building (for advanced use cases)
-export {
-  buildSuggestions,
-  buildFallbackSuggestions,
-} from "./suggestion-builder"
+export { buildSuggestions } from "./suggestion-builder"

@@ -106,7 +106,7 @@ import type {
   OrderByClauseCstChildren,
   OrderByItemCstChildren,
   OverClauseCstChildren,
-  PartitionByCstChildren,
+  PartitionPeriodCstChildren,
   PermissionListCstChildren,
   PermissionTokenCstChildren,
   PivotAggregationCstChildren,
@@ -816,11 +816,11 @@ class QuestDBVisitor extends BaseVisitor {
 
     const result: AST.LimitClause = {
       type: "limit",
-      count: expressions[0],
+      lowerBound: expressions[0],
     }
 
     if (expressions.length > 1) {
-      result.offset = expressions[1]
+      result.upperBound = expressions[1]
     }
 
     return result
@@ -1047,8 +1047,8 @@ class QuestDBVisitor extends BaseVisitor {
       ).name.parts.join(".")
     }
 
-    if (ctx.partitionBy) {
-      result.partitionBy = this.visit(ctx.partitionBy) as
+    if (ctx.partitionPeriod) {
+      result.partitionBy = this.visit(ctx.partitionPeriod) as
         | "NONE"
         | "HOUR"
         | "DAY"
@@ -1073,8 +1073,12 @@ class QuestDBVisitor extends BaseVisitor {
       )
     }
     if (ctx.Volume) {
-      result.volume = ctx.StringLiteral?.[0]
-        ? ctx.StringLiteral[0].image.slice(1, -1)
+      const volumeOffset = ctx.Volume[0].startOffset
+      const volumeStr = ctx.StringLiteral?.find(
+        (t: IToken) => t.startOffset > volumeOffset,
+      )
+      result.volume = volumeStr
+        ? volumeStr.image.slice(1, -1)
         : ctx.identifier?.length
           ? this.extractIdentifierName(
               ctx.identifier[ctx.identifier.length - 1].children,
@@ -1302,19 +1306,20 @@ class QuestDBVisitor extends BaseVisitor {
       result.timestamp = (this.visit(ctx.columnRef[0]) as AST.ColumnRef).name
     }
     if (ctx.materializedViewPartition) {
-      const partitionCtx = ctx.materializedViewPartition[0].children
-      if (partitionCtx.Year) result.partitionBy = "YEAR"
-      else if (partitionCtx.Month) result.partitionBy = "MONTH"
-      else if (partitionCtx.Week) result.partitionBy = "WEEK"
-      else if (partitionCtx.Day) result.partitionBy = "DAY"
-      else if (partitionCtx.Hour) result.partitionBy = "HOUR"
-      if (partitionCtx.Ttl && partitionCtx.NumberLiteral) {
-        result.ttl = this.extractTtl(partitionCtx)
+      const partition = this.visit(ctx.materializedViewPartition) as {
+        partitionBy?: AST.CreateMaterializedViewStatement["partitionBy"]
+        ttl?: AST.CreateMaterializedViewStatement["ttl"]
       }
+      if (partition.partitionBy) result.partitionBy = partition.partitionBy
+      if (partition.ttl) result.ttl = partition.ttl
     }
     if (ctx.Volume) {
-      result.volume = ctx.StringLiteral?.[0]
-        ? ctx.StringLiteral[0].image.slice(1, -1)
+      const volumeOffset = ctx.Volume[0].startOffset
+      const volumeStr = ctx.StringLiteral?.find(
+        (t: IToken) => t.startOffset > volumeOffset,
+      )
+      result.volume = volumeStr
+        ? volumeStr.image.slice(1, -1)
         : ctx.identifier?.length
           ? this.extractIdentifierName(
               ctx.identifier[ctx.identifier.length - 1].children,
@@ -1377,18 +1382,22 @@ class QuestDBVisitor extends BaseVisitor {
       partitionBy?: AST.CreateMaterializedViewStatement["partitionBy"]
       ttl?: AST.CreateMaterializedViewStatement["ttl"]
     } = {}
-    if (ctx.Year) result.partitionBy = "YEAR"
-    else if (ctx.Month) result.partitionBy = "MONTH"
-    else if (ctx.Day) result.partitionBy = "DAY"
-    else if (ctx.Hour) result.partitionBy = "HOUR"
+    if (ctx.partitionPeriod) {
+      result.partitionBy = this.visit(ctx.partitionPeriod) as
+        | "YEAR"
+        | "MONTH"
+        | "WEEK"
+        | "DAY"
+        | "HOUR"
+    }
     if (ctx.Ttl && ctx.NumberLiteral) {
       result.ttl = this.extractTtl(ctx)
     }
     return result
   }
 
-  partitionBy(
-    ctx: PartitionByCstChildren,
+  partitionPeriod(
+    ctx: PartitionPeriodCstChildren,
   ): "NONE" | "HOUR" | "DAY" | "WEEK" | "MONTH" | "YEAR" {
     if (ctx.None) return "NONE"
     if (ctx.Hour) return "HOUR"
@@ -1816,7 +1825,7 @@ class QuestDBVisitor extends BaseVisitor {
       if (ctx.With) {
         // Code can be a NumberLiteral or StringLiteral
         if (ctx.NumberLiteral) {
-          result.code = ctx.NumberLiteral[0].image
+          result.code = parseInt(ctx.NumberLiteral[0].image, 10)
         } else if (ctx.StringLiteral && ctx.StringLiteral.length > 0) {
           result.code = ctx.StringLiteral[0].image.slice(1, -1)
         }
@@ -2038,10 +2047,13 @@ class QuestDBVisitor extends BaseVisitor {
   exitServiceAccountStatement(
     ctx: ExitServiceAccountStatementCstChildren,
   ): AST.ExitServiceAccountStatement {
-    return {
+    const result: AST.ExitServiceAccountStatement = {
       type: "exitServiceAccount",
-      account: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
     }
+    if (ctx.qualifiedName) {
+      result.account = this.visit(ctx.qualifiedName) as AST.QualifiedName
+    }
+    return result
   }
 
   cancelQueryStatement(
@@ -2345,7 +2357,7 @@ class QuestDBVisitor extends BaseVisitor {
         ctx.Lzo?.[0]
       result.value = codecToken?.image
     } else if (ctx.Partition || ctx.PartitionBy) {
-      result.value = this.visit(ctx.partitionBy!) as
+      result.value = this.visit(ctx.partitionPeriod!) as
         | "NONE"
         | "HOUR"
         | "DAY"
@@ -2577,13 +2589,11 @@ class QuestDBVisitor extends BaseVisitor {
     const result: AST.ResumeWalStatement = {
       type: "resumeWal",
     }
-    if (ctx.Transaction && (ctx.NumberLiteral || ctx.Identifier)) {
-      const token = ctx.NumberLiteral?.[0] ?? ctx.Identifier?.[0]
-      result.fromTransaction = token?.image
+    if (ctx.Transaction && ctx.NumberLiteral) {
+      result.fromTransaction = parseInt(ctx.NumberLiteral[0].image, 10)
     }
-    if (ctx.Txn && (ctx.NumberLiteral || ctx.Identifier)) {
-      const token = ctx.NumberLiteral?.[0] ?? ctx.Identifier?.[0]
-      result.fromTxn = token?.image
+    if (ctx.Txn && ctx.NumberLiteral) {
+      result.fromTxn = parseInt(ctx.NumberLiteral[0].image, 10)
     }
     return result
   }
@@ -3106,12 +3116,19 @@ class QuestDBVisitor extends BaseVisitor {
     }
   }
 
-  /** Visit a CST node, returning undefined instead of throwing on incomplete input */
+  /**
+   * Used in implicitSelectBody so that an incomplete clause (e.g. `trades WHERE price >`)
+   * doesn't destroy the entire AST. The fromClause visit succeeds and is kept; the
+   * whereClause visit throws on the empty expression shell and is discarded.
+   * Without this, parseToAst would return ast:[] for any incomplete implicit select.
+   *
+   * See tests in parser.test.ts
+   */
   private visitSafe(node: CstNode | CstNode[]): unknown {
     try {
       return this.visit(node) as unknown
     } catch {
-      return undefined
+      // Don't throw further
     }
   }
 
@@ -3497,9 +3514,12 @@ class QuestDBVisitor extends BaseVisitor {
   literal(ctx: LiteralCstChildren): AST.Literal {
     if (ctx.NumberLiteral) {
       const image = this.tokenImage(ctx.NumberLiteral[0])
+      const cleaned = image.replace(/_/g, "")
       return {
         type: "literal",
-        value: image.includes(".") ? parseFloat(image) : parseInt(image, 10),
+        value: cleaned.includes(".")
+          ? parseFloat(cleaned)
+          : parseInt(cleaned, 10),
         literalType: "number",
         raw: image,
       }
@@ -3525,9 +3545,11 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.LongLiteral) {
       const image = this.tokenImage(ctx.LongLiteral[0])
+      const numStr = image.replace(/[Ll_]/g, "")
+      const parsed = parseInt(numStr, 10)
       return {
         type: "literal",
-        value: parseInt(image.replace(/[Ll_]/g, ""), 10),
+        value: Number.isSafeInteger(parsed) ? parsed : numStr,
         literalType: "number",
         raw: image,
       }
@@ -3645,7 +3667,7 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.QuotedIdentifier) {
       const raw = this.tokenImage(ctx.QuotedIdentifier[0] as IToken)
-      return raw.slice(1, -1)
+      return raw.slice(1, -1).replace(/""/g, '"')
     }
     return ""
   }
@@ -3704,7 +3726,7 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.QuotedIdentifier) {
       const raw = this.tokenImage(ctx.QuotedIdentifier[0] as IToken)
-      return raw.slice(1, -1)
+      return raw.slice(1, -1).replace(/""/g, '"')
     }
     // Handle keyword tokens used as identifiers
     // Find the first token in the context

@@ -3,6 +3,25 @@
 // =============================================================================
 
 import * as AST from "./ast"
+import { keywords } from "../grammar/keywords"
+import { constants } from "../grammar/constants"
+import { IDENTIFIER_KEYWORD_NAMES } from "./tokens"
+
+function toPascalCase(str: string): string {
+  if (str.includes("_")) {
+    return str
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join("")
+  }
+  return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+const RESERVED_KEYWORDS = new Set(
+  [...keywords, ...constants]
+    .filter((k) => !IDENTIFIER_KEYWORD_NAMES.has(toPascalCase(k)))
+    .map((k) => k.toLowerCase()),
+)
 
 export function toSql(node: AST.Statement | AST.Statement[]): string {
   if (Array.isArray(node)) {
@@ -73,7 +92,9 @@ function statementToSql(stmt: AST.Statement): string {
     case "assumeServiceAccount":
       return `ASSUME SERVICE ACCOUNT ${qualifiedNameToSql(stmt.account)}`
     case "exitServiceAccount":
-      return `EXIT SERVICE ACCOUNT ${qualifiedNameToSql(stmt.account)}`
+      return stmt.account
+        ? `EXIT SERVICE ACCOUNT ${qualifiedNameToSql(stmt.account)}`
+        : "EXIT SERVICE ACCOUNT"
     case "grant":
       return grantToSql(stmt)
     case "revoke":
@@ -231,11 +252,11 @@ function selectToSql(stmt: AST.SelectStatement): string {
   // LIMIT
   if (stmt.limit) {
     parts.push("LIMIT")
-    if (stmt.limit.offset) {
-      parts.push(`${expressionToSql(stmt.limit.count)},`)
-      parts.push(expressionToSql(stmt.limit.offset))
+    if (stmt.limit.upperBound) {
+      parts.push(`${expressionToSql(stmt.limit.lowerBound)},`)
+      parts.push(expressionToSql(stmt.limit.upperBound))
     } else {
-      parts.push(expressionToSql(stmt.limit.count))
+      parts.push(expressionToSql(stmt.limit.lowerBound))
     }
   }
 
@@ -683,7 +704,9 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       parts.push("DROP PARTITION")
       if (action.partitions && action.partitions.length > 0) {
         parts.push("LIST")
-        parts.push(action.partitions.map((p: string) => escapeString(p)).join(", "))
+        parts.push(
+          action.partitions.map((p: string) => escapeString(p)).join(", "),
+        )
       } else if (action.where) {
         parts.push("WHERE")
         parts.push(expressionToSql(action.where))
@@ -693,7 +716,9 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       parts.push("ATTACH PARTITION")
       if (action.partitions && action.partitions.length > 0) {
         parts.push("LIST")
-        parts.push(action.partitions.map((p: string) => escapeString(p)).join(", "))
+        parts.push(
+          action.partitions.map((p: string) => escapeString(p)).join(", "),
+        )
       }
       break
     case "detachPartition":
@@ -739,9 +764,15 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       break
     case "suspendWal": {
       parts.push("SUSPEND WAL")
-      if (action.code || action.message) {
+      if (action.code != null || action.message) {
         const withParts: string[] = []
-        if (action.code) withParts.push(action.code)
+        if (action.code != null) {
+          withParts.push(
+            typeof action.code === "number"
+              ? String(action.code)
+              : escapeString(action.code),
+          )
+        }
         if (action.message) withParts.push(escapeString(action.message))
         parts.push(`WITH ${withParts.join(", ")}`)
       }
@@ -760,7 +791,9 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       parts.push("CONVERT PARTITION")
       if (action.partitions && action.partitions.length > 0) {
         parts.push("LIST")
-        parts.push(action.partitions.map((p: string) => escapeString(p)).join(", "))
+        parts.push(
+          action.partitions.map((p: string) => escapeString(p)).join(", "),
+        )
       }
       parts.push("TO")
       parts.push(action.target)
@@ -906,7 +939,8 @@ function materializedViewRefreshToSql(
   if (refresh.every) parts.push(`EVERY ${refresh.every}`)
   if (refresh.deferred) parts.push("DEFERRED")
   if (refresh.start) parts.push(`START ${escapeString(refresh.start)}`)
-  if (refresh.timeZone) parts.push(`TIME ZONE ${escapeString(refresh.timeZone)}`)
+  if (refresh.timeZone)
+    parts.push(`TIME ZONE ${escapeString(refresh.timeZone)}`)
   return parts.join(" ")
 }
 
@@ -918,7 +952,8 @@ function materializedViewPeriodToSql(
     inner.push("SAMPLE BY INTERVAL")
   } else {
     if (period.length) inner.push(`LENGTH ${period.length}`)
-    if (period.timeZone) inner.push(`TIME ZONE ${escapeString(period.timeZone)}`)
+    if (period.timeZone)
+      inner.push(`TIME ZONE ${escapeString(period.timeZone)}`)
     if (period.delay) inner.push(`DELAY ${period.delay}`)
   }
   return `PERIOD (${inner.join(" ")})`
@@ -1019,7 +1054,9 @@ function refreshMaterializedViewToSql(
   if (stmt.mode === "full") parts.push("FULL")
   else if (stmt.mode === "incremental") parts.push("INCREMENTAL")
   else if (stmt.mode === "range") {
-    parts.push(`RANGE FROM ${escapeString(stmt.from!)} TO ${escapeString(stmt.to!)}`)
+    parts.push(
+      `RANGE FROM ${escapeString(stmt.from!)} TO ${escapeString(stmt.to!)}`,
+    )
   }
   return parts.join(" ")
 }
@@ -1031,7 +1068,7 @@ function refreshMaterializedViewToSql(
 function declareClauseToSql(clause: AST.DeclareClause): string {
   const assignments = clause.assignments.map((a) => {
     const prefix = a.overridable ? "OVERRIDABLE " : ""
-    return `${prefix}@${escapeIdentifier(a.name)} := ${expressionToSql(a.value)}`
+    return `${prefix}@${a.name} := ${expressionToSql(a.value)}`
   })
   return `DECLARE ${assignments.join(", ")}`
 }
@@ -1045,7 +1082,8 @@ function createUserToSql(stmt: AST.CreateUserStatement): string {
   if (stmt.ifNotExists) parts.push("IF NOT EXISTS")
   parts.push(qualifiedNameToSql(stmt.user))
   if (stmt.noPassword) parts.push("WITH NO PASSWORD")
-  else if (stmt.password) parts.push(`WITH PASSWORD ${escapeString(stmt.password)}`)
+  else if (stmt.password)
+    parts.push(`WITH PASSWORD ${escapeString(stmt.password)}`)
   return parts.join(" ")
 }
 
@@ -1081,7 +1119,8 @@ function createServiceAccountToSql(
   if (stmt.ifNotExists) parts.push("IF NOT EXISTS")
   parts.push(qualifiedNameToSql(stmt.account))
   if (stmt.noPassword) parts.push("WITH NO PASSWORD")
-  else if (stmt.password) parts.push(`WITH PASSWORD ${escapeString(stmt.password)}`)
+  else if (stmt.password)
+    parts.push(`WITH PASSWORD ${escapeString(stmt.password)}`)
   if (stmt.ownedBy) parts.push(`OWNED BY ${escapeIdentifier(stmt.ownedBy)}`)
   return parts.join(" ")
 }
@@ -1207,16 +1246,16 @@ function vacuumTableToSql(stmt: AST.VacuumTableStatement): string {
 
 function resumeWalToSql(stmt: AST.ResumeWalStatement): string {
   const parts: string[] = ["RESUME WAL"]
-  if (stmt.fromTransaction)
+  if (stmt.fromTransaction != null)
     parts.push(`FROM TRANSACTION ${stmt.fromTransaction}`)
-  if (stmt.fromTxn) parts.push(`FROM TXN ${stmt.fromTxn}`)
+  if (stmt.fromTxn != null) parts.push(`FROM TXN ${stmt.fromTxn}`)
   return parts.join(" ")
 }
 
 function setTypeToSql(stmt: AST.SetTypeStatement): string {
   const parts: string[] = ["SET TYPE"]
   if (stmt.bypass) parts.push("BYPASS")
-  parts.push(stmt.wal ? "WAL" : "BYPASS WAL")
+  parts.push("WAL")
   return parts.join(" ")
 }
 
@@ -1226,7 +1265,9 @@ function reindexTableToSql(stmt: AST.ReindexTableStatement): string {
     parts.push(`COLUMN ${stmt.columns.map(escapeIdentifier).join(", ")}`)
   }
   if (stmt.partitions && stmt.partitions.length > 0) {
-    parts.push(`PARTITION ${stmt.partitions.map((p) => escapeString(p)).join(", ")}`)
+    parts.push(
+      `PARTITION ${stmt.partitions.map((p) => escapeString(p)).join(", ")}`,
+    )
   }
   if (stmt.lockExclusive) parts.push("LOCK EXCLUSIVE")
   return parts.join(" ")
@@ -1236,7 +1277,8 @@ function copyOptionToSql(opt: AST.CopyOption): string {
   if (opt.value === undefined) return opt.key
   if (opt.value === true) return `${opt.key} TRUE`
   if (opt.value === false) return `${opt.key} FALSE`
-  if (typeof opt.value === "string") return `${opt.key} ${escapeString(opt.value)}`
+  if (typeof opt.value === "string")
+    return `${opt.key} ${escapeString(opt.value)}`
   if (Array.isArray(opt.value)) return `${opt.key} ${opt.value.join(" ")}`
   return `${opt.key} ${opt.value}`
 }
@@ -1258,7 +1300,9 @@ function copyToToSql(stmt: AST.CopyToStatement): string {
   } else {
     source = qualifiedNameToSql(stmt.source)
   }
-  const parts: string[] = [`COPY ${source} TO ${escapeString(stmt.destination)}`]
+  const parts: string[] = [
+    `COPY ${source} TO ${escapeString(stmt.destination)}`,
+  ]
   if (stmt.options && stmt.options.length > 0) {
     parts.push(`WITH ${stmt.options.map(copyOptionToSql).join(" ")}`)
   }
@@ -1361,11 +1405,11 @@ function pivotToSql(stmt: AST.PivotStatement): string {
   // LIMIT
   if (stmt.limit) {
     parts.push("LIMIT")
-    if (stmt.limit.offset) {
-      parts.push(`${expressionToSql(stmt.limit.count)},`)
-      parts.push(expressionToSql(stmt.limit.offset))
+    if (stmt.limit.upperBound) {
+      parts.push(`${expressionToSql(stmt.limit.lowerBound)},`)
+      parts.push(expressionToSql(stmt.limit.upperBound))
     } else {
-      parts.push(expressionToSql(stmt.limit.count))
+      parts.push(expressionToSql(stmt.limit.lowerBound))
     }
   }
 
@@ -1386,7 +1430,7 @@ function expressionToSql(expr: AST.Expression): string {
     case "column":
       return qualifiedNameToSql(expr.name)
     case "variable":
-      return `@${escapeIdentifier(expr.name)}`
+      return `@${expr.name}`
     case "literal":
       return literalToSql(expr)
     case "function":
@@ -1509,10 +1553,12 @@ function windowSpecToSql(spec: AST.WindowSpecification): string {
 function windowFrameToSql(frame: AST.WindowFrame): string {
   const mode = frame.mode.toUpperCase()
   let sql: string
-  if (frame.end) {
+  if (frame.start && frame.end) {
     sql = `${mode} BETWEEN ${windowFrameBoundToSql(frame.start)} AND ${windowFrameBoundToSql(frame.end)}`
-  } else {
+  } else if (frame.start) {
     sql = `${mode} ${windowFrameBoundToSql(frame.start)}`
+  } else {
+    sql = mode
   }
   if (frame.exclude) {
     switch (frame.exclude) {
@@ -1584,6 +1630,7 @@ function inExprToSql(expr: AST.InExpression): string {
   if (expr.parenthesized || expr.values.length > 1) {
     return `${left}${not} IN (${values})`
   }
+  // For timestamp with range-returning functions like today() or yesterday()
   return `${left}${not} IN ${values}`
 }
 
@@ -1649,8 +1696,10 @@ function escapeString(value: string): string {
 }
 
 function escapeIdentifier(name: string): string {
-  // Check if identifier needs quoting (contains special chars or is a keyword)
-  if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+  if (
+    /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name) &&
+    !RESERVED_KEYWORDS.has(name.toLowerCase())
+  ) {
     return name
   }
   return `"${name.replace(/"/g, '""')}"`

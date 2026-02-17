@@ -102,7 +102,7 @@ const allGeneratedTokens = new Map<string, TokenType>([
 //   Operators:   And, Or, Not, In, Between, Like, Ilike, Is
 //   Expressions: Case, When, Then, Else, End, Cast, True, False, Null, NaN,
 //                All, Any, Distinct, Over
-//   Clauses:     Group, Order, Asc, Desc, Limit, Sample, Latest, Window,
+//   Clauses:     Group, Order, Asc, Desc, Limit, Sample, Window,
 //                Union, Intersect, Except, Pivot, Unpivot, Lock, Truncate
 
 export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([

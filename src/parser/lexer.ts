@@ -686,7 +686,7 @@ export const StringLiteral = createToken({
 // Quoted Identifiers
 export const QuotedIdentifier = createToken({
   name: "QuotedIdentifier",
-  pattern: /"([^"\\]|\\.)*"/,
+  pattern: /"([^"\\]|\\.|"")*"/,
 })
 
 // Identifiers (must come after keywords)

@@ -7,7 +7,7 @@
 // duplicate these definitions.
 // =============================================================================
 
-import { IDENTIFIER_KEYWORD_NAMES } from "../parser/tokens"
+import { IDENTIFIER_KEYWORD_NAMES, keywordTokens } from "../parser/tokens"
 
 /**
  * Token types that represent actual identifiers
@@ -30,12 +30,6 @@ export const IDENTIFIER_TOKENS = new Set([
 export const IDENTIFIER_KEYWORD_TOKENS = IDENTIFIER_KEYWORD_NAMES
 
 /**
- * Keywords that should always be suggested even when identifiers are allowed.
- * These are context-sensitive keywords that appear in expression positions.
- */
-export const ALWAYS_SUGGEST_KEYWORDS = new Set(["Current"])
-
-/**
  * Expression-continuation operators that are valid after any expression but
  * should be deprioritized so clause-level keywords (ASC, DESC, LIMIT, etc.)
  * appear first in the suggestion list.
@@ -50,6 +44,13 @@ export const EXPRESSION_OPERATORS = new Set([
   "Like",
   "Ilike",
   "Within",
+  // Subquery/set operators
+  "All",
+  "Any",
+  "Some",
+  // Expression-start keywords that continue an expression context
+  "Case",
+  "Cast",
   // Query connectors — valid after any complete query but should not
   // overshadow clause-level keywords the user is more likely typing.
   "Union",
@@ -142,17 +143,33 @@ export const OPERATOR_MAP: Record<string, string> = {
 }
 
 /**
+ * Reverse map from token name → actual SQL keyword, built from lexer patterns.
+ * e.g., "DataPageSize" → "DATA_PAGE_SIZE", "Select" → "SELECT"
+ */
+const TOKEN_KEYWORD_MAP = new Map<string, string>()
+for (const [name, token] of keywordTokens) {
+  if (token.PATTERN instanceof RegExp) {
+    TOKEN_KEYWORD_MAP.set(
+      name,
+      token.PATTERN.source.replace(/\\b$/, "").toUpperCase(),
+    )
+  }
+}
+
+/**
  * Convert a token type name to a keyword string for display
- * e.g., "Table" → "TABLE", "PartitionBy" → "PARTITION BY"
+ * e.g., "Table" → "TABLE", "DataPageSize" → "DATA_PAGE_SIZE"
  */
 export function tokenNameToKeyword(name: string): string {
-  // Check if it's an operator
   if (OPERATOR_MAP[name]) {
     return OPERATOR_MAP[name]
   }
 
-  // Convert PascalCase to UPPERCASE with spaces
-  // e.g., "PartitionBy" → "PARTITION BY", "LatestOn" → "LATEST ON"
+  // Use the actual keyword from the lexer pattern (preserves underscores)
+  const keyword = TOKEN_KEYWORD_MAP.get(name)
+  if (keyword) return keyword
+
+  // Fallback for non-keyword tokens
   return name.replace(/([a-z])([A-Z])/g, "$1 $2").toUpperCase()
 }
 

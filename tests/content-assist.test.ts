@@ -1,3 +1,4 @@
+import { describe, it, expect } from "vitest"
 import {
   getContentAssist,
   getNextValidTokens,
@@ -169,8 +170,9 @@ describe("Content Assist", () => {
     it("fallback should extract qualified table names with quoted parts", () => {
       const sql = 'FROM metrics."daily-trades" dt'
       const result = getContentAssist(sql, sql.length)
+      // Schema-qualified names resolve to the bare table name for schema lookup
       expect(result.tablesInScope).toContainEqual({
-        table: "metrics.daily-trades",
+        table: "daily-trades",
         alias: "dt",
       })
     })
@@ -608,8 +610,9 @@ describe("Content Assist", () => {
     it("should extract keyword table in qualified name in incomplete query", () => {
       const sql = "SELECT , FROM schema.default WHERE "
       const result = getContentAssist(sql, sql.length)
+      // Schema-qualified names resolve to the bare table name for schema lookup
       expect(result.tablesInScope).toContainEqual(
-        expect.objectContaining({ table: "schema.default" }),
+        expect.objectContaining({ table: "default" }),
       )
     })
   })

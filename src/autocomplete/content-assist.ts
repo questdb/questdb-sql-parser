@@ -1,7 +1,8 @@
 import { type ILexingError, IToken, TokenType } from "chevrotain"
-import { parser } from "../parser/parser"
+import { parser, parse as parseRaw } from "../parser/parser"
+import { visitor } from "../parser/visitor"
 import { QuestDBLexer } from "../parser/lexer"
-import { parseToAst } from "../index"
+import type { Statement } from "../parser/ast"
 import { IDENTIFIER_KEYWORD_TOKENS } from "./token-classification"
 
 // =============================================================================
@@ -47,7 +48,11 @@ function normalizeTableName(value: unknown): string | undefined {
   if (typeof value === "object" && value !== null) {
     const obj = value as Record<string, unknown>
     if (Array.isArray(obj.parts)) {
-      return (obj.parts as string[]).join(".")
+      // Use only the last part (table name) for schema lookup.
+      // Schema-qualified names like "public.trades" should resolve to "trades"
+      // since the schema columns map is keyed by bare table name.
+      const parts = obj.parts as string[]
+      return parts[parts.length - 1]
     }
     if (typeof obj.name === "string") return obj.name
   }
@@ -66,7 +71,7 @@ function extractTablesFromAst(ast: unknown): TableRef[] {
     const n = node as Record<string, unknown>
 
     // Handle table references in FROM clause
-    if (n.type === "table_ref" || n.type === "tableRef") {
+    if (n.type === "tableRef") {
       const tableName = normalizeTableName(n.table ?? n.name)
       if (tableName) {
         tables.push({
@@ -151,12 +156,13 @@ function extractTablesFromAst(ast: unknown): TableRef[] {
 function extractTables(fullSql: string, tokens: IToken[]): TableRef[] {
   // First, try to parse and extract from AST
   try {
-    const result = parseToAst(fullSql)
-    if (result.ast && result.ast.length > 0) {
-      return extractTablesFromAst(result.ast)
+    const { cst } = parseRaw(fullSql)
+    const ast = visitor.visit(cst) as Statement[]
+    if (ast && ast.length > 0) {
+      return extractTablesFromAst(ast)
     }
-  } catch (e) {
-    // Parsing failed, fall through to token-based extraction
+  } catch {
+    // Parsing or visitor failed, fall through to token-based extraction
   }
 
   // Fallback: extract from tokens by looking for table name patterns
@@ -194,7 +200,9 @@ function extractTables(fullSql: string, tokens: IToken[]): TableRef[] {
       i += 2
     }
 
-    return { name: parts.join("."), nextIndex: i }
+    // Use only the last part (table name) for schema lookup.
+    // Schema-qualified names like "metrics.trades" resolve to "trades".
+    return { name: parts[parts.length - 1], nextIndex: i }
   }
 
   for (let i = 0; i < tokens.length; i++) {

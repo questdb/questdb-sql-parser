@@ -1,9 +1,13 @@
+import { describe, it, expect } from "vitest"
 import {
   createAutocompleteProvider,
   SuggestionKind,
   SuggestionPriority,
-} from "../src/index";
-import type { AutocompleteProvider, Suggestion } from "../src/autocomplete/types";
+} from "../src/index"
+import type {
+  AutocompleteProvider,
+  Suggestion,
+} from "../src/autocomplete/types"
 
 // =============================================================================
 // Test Utility: Autocomplete Walkthrough
@@ -14,11 +18,11 @@ import type { AutocompleteProvider, Suggestion } from "../src/autocomplete/types
 
 interface WalkthroughStep {
   /** The partial SQL up to this point (what user has typed so far) */
-  typed: string;
+  typed: string
   /** Token names or keyword labels expected in suggestions */
-  expects: string[];
+  expects: string[]
   /** Token names or keyword labels that should NOT appear */
-  rejects?: string[];
+  rejects?: string[]
 }
 
 /**
@@ -27,19 +31,19 @@ interface WalkthroughStep {
  */
 function assertSuggestionsWalkthrough(
   provider: AutocompleteProvider,
-  steps: WalkthroughStep[]
+  steps: WalkthroughStep[],
 ) {
   for (const step of steps) {
-    const suggestions = provider.getSuggestions(step.typed, step.typed.length);
-    const labels = suggestions.map((s) => s.label);
+    const suggestions = provider.getSuggestions(step.typed, step.typed.length)
+    const labels = suggestions.map((s) => s.label)
 
     for (const expected of step.expects) {
-      expect(labels).toContain(expected);
+      expect(labels).toContain(expected)
     }
 
     if (step.rejects) {
       for (const rejected of step.rejects) {
-        expect(labels).not.toContain(rejected);
+        expect(labels).not.toContain(rejected)
       }
     }
   }
@@ -51,11 +55,9 @@ function assertSuggestionsWalkthrough(
 function getLabelsAt(
   provider: AutocompleteProvider,
   sql: string,
-  offset?: number
+  offset?: number,
 ): string[] {
-  return provider
-    .getSuggestions(sql, offset ?? sql.length)
-    .map((s) => s.label);
+  return provider.getSuggestions(sql, offset ?? sql.length).map((s) => s.label)
 }
 
 /**
@@ -65,11 +67,11 @@ function getSuggestionsOfKind(
   provider: AutocompleteProvider,
   sql: string,
   kind: SuggestionKind,
-  offset?: number
+  offset?: number,
 ): Suggestion[] {
   return provider
     .getSuggestions(sql, offset ?? sql.length)
-    .filter((s) => s.kind === kind);
+    .filter((s) => s.kind === kind)
 }
 
 // =============================================================================
@@ -98,9 +100,9 @@ const schema = {
       { name: "email", type: "STRING" },
     ],
   },
-};
+}
 
-const provider = createAutocompleteProvider(schema);
+const provider = createAutocompleteProvider(schema)
 
 // =============================================================================
 // Tests
@@ -109,91 +111,106 @@ const provider = createAutocompleteProvider(schema);
 describe("createAutocompleteProvider", () => {
   describe("keyword suggestions", () => {
     it("suggests TABLE after CREATE", () => {
-      const labels = getLabelsAt(provider, "CREATE ");
-      expect(labels).toContain("TABLE");
-      expect(labels).not.toContain("SELECT");
-    });
+      const labels = getLabelsAt(provider, "CREATE ")
+      expect(labels).toContain("TABLE")
+      expect(labels).not.toContain("SELECT")
+    })
 
     it("suggests valid actions after ALTER TABLE tableName", () => {
-      const labels = getLabelsAt(provider, "ALTER TABLE trades ");
-      expect(labels).toContain("ADD");
-      expect(labels).toContain("DROP");
-      expect(labels).toContain("RENAME");
-    });
+      const labels = getLabelsAt(provider, "ALTER TABLE trades ")
+      expect(labels).toContain("ADD")
+      expect(labels).toContain("DROP")
+      expect(labels).toContain("RENAME")
+    })
 
     it("suggests FROM after SELECT *", () => {
-      const labels = getLabelsAt(provider, "SELECT * ");
-      expect(labels).toContain("FROM");
-    });
+      const labels = getLabelsAt(provider, "SELECT * ")
+      expect(labels).toContain("FROM")
+    })
 
     it("suggests BY after ORDER", () => {
-      const labels = getLabelsAt(provider, "SELECT * FROM trades ORDER ");
-      expect(labels).toContain("BY");
-    });
-  });
+      const labels = getLabelsAt(provider, "SELECT * FROM trades ORDER ")
+      expect(labels).toContain("BY")
+    })
+  })
 
   describe("column suggestions", () => {
     it("suggests columns after SELECT (with FROM clause)", () => {
       const columns = getSuggestionsOfKind(
-        provider, "SELECT  FROM trades", SuggestionKind.Column, 7
-      );
-      expect(columns.length).toBeGreaterThan(0);
-      const columnLabels = columns.map((s) => s.label);
-      expect(columnLabels).toContain("symbol");
-      expect(columnLabels).toContain("price");
-      expect(columnLabels).toContain("timestamp");
-      expect(columns.every((s) => s.priority === SuggestionPriority.High)).toBe(true);
-    });
+        provider,
+        "SELECT  FROM trades",
+        SuggestionKind.Column,
+        7,
+      )
+      expect(columns.length).toBeGreaterThan(0)
+      const columnLabels = columns.map((s) => s.label)
+      expect(columnLabels).toContain("symbol")
+      expect(columnLabels).toContain("price")
+      expect(columnLabels).toContain("timestamp")
+      expect(columns.every((s) => s.priority === SuggestionPriority.High)).toBe(
+        true,
+      )
+    })
 
     it("suggests columns in WHERE clause", () => {
       const columns = getSuggestionsOfKind(
-        provider, "SELECT * FROM trades WHERE ", SuggestionKind.Column
-      );
-      expect(columns.length).toBeGreaterThan(0);
-      expect(columns.map((s) => s.label)).toContain("symbol");
-    });
-  });
+        provider,
+        "SELECT * FROM trades WHERE ",
+        SuggestionKind.Column,
+      )
+      expect(columns.length).toBeGreaterThan(0)
+      expect(columns.map((s) => s.label)).toContain("symbol")
+    })
+  })
 
   describe("table suggestions", () => {
     it("suggests tables after FROM", () => {
       const tables = getSuggestionsOfKind(
-        provider, "SELECT * FROM ", SuggestionKind.Table
-      );
-      expect(tables.length).toBeGreaterThan(0);
-      const tableLabels = tables.map((s) => s.label);
-      expect(tableLabels).toContain("trades");
-      expect(tableLabels).toContain("orders");
-    });
+        provider,
+        "SELECT * FROM ",
+        SuggestionKind.Table,
+      )
+      expect(tables.length).toBeGreaterThan(0)
+      const tableLabels = tables.map((s) => s.label)
+      expect(tableLabels).toContain("trades")
+      expect(tableLabels).toContain("orders")
+    })
 
     it("suggests tables after JOIN", () => {
       const tables = getSuggestionsOfKind(
-        provider, "SELECT * FROM trades JOIN ", SuggestionKind.Table
-      );
-      expect(tables.length).toBeGreaterThan(0);
-    });
-  });
+        provider,
+        "SELECT * FROM trades JOIN ",
+        SuggestionKind.Table,
+      )
+      expect(tables.length).toBeGreaterThan(0)
+    })
+  })
 
   describe("suggestion details", () => {
     it("includes column details with table and type", () => {
-      const suggestions = provider.getSuggestions("SELECT  FROM trades", 7);
-      const symbolSuggestion = suggestions.find((s) => s.label === "symbol");
-      expect(symbolSuggestion).toBeDefined();
-      expect(symbolSuggestion?.detail).toContain("trades");
-      expect(symbolSuggestion?.description).toBe("STRING");
-    });
-  });
+      const suggestions = provider.getSuggestions("SELECT  FROM trades", 7)
+      const symbolSuggestion = suggestions.find((s) => s.label === "symbol")
+      expect(symbolSuggestion).toBeDefined()
+      expect(symbolSuggestion?.detail).toContain("trades")
+      expect(symbolSuggestion?.description).toBe("STRING")
+    })
+  })
 
   describe("priority ordering", () => {
     it("columns have higher priority than tables", () => {
-      const suggestions = provider.getSuggestions("SELECT  FROM trades", 7);
-      const columnSuggestion = suggestions.find((s) => s.kind === SuggestionKind.Column);
-      const tableSuggestion = suggestions.find((s) => s.kind === SuggestionKind.Table);
-      expect(columnSuggestion).toBeDefined();
-      expect(tableSuggestion).toBeDefined();
-      expect(columnSuggestion!.priority).toBeLessThan(tableSuggestion!.priority);
-    });
-  });
-});
+      const suggestions = provider.getSuggestions("SELECT  FROM trades", 7)
+      const columnSuggestion = suggestions.find(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      const tableSuggestion = suggestions.find(
+        (s) => s.kind === SuggestionKind.Table,
+      )
+      expect(columnSuggestion).toBeDefined()
+      expect(tableSuggestion).toBeDefined()
+      expect(columnSuggestion!.priority).toBeLessThan(tableSuggestion!.priority)
+    })
+  })
+})
 
 // =============================================================================
 // Autocomplete Walkthrough Tests
@@ -223,9 +240,9 @@ describe("Autocomplete walkthrough", () => {
           typed: "SELECT * FROM trades WHERE ",
           expects: ["symbol", "price", "amount", "timestamp"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("SELECT symbol, price FROM trades ORDER BY price DESC", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -254,9 +271,9 @@ describe("Autocomplete walkthrough", () => {
           typed: "SELECT symbol, price FROM trades ORDER ",
           expects: ["BY"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("INSERT INTO trades (symbol, price) VALUES ('BTC', 100)", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -269,9 +286,9 @@ describe("Autocomplete walkthrough", () => {
           typed: "INSERT INTO ",
           expects: ["trades", "orders"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("CREATE TABLE new_table (id INT, name STRING) TIMESTAMP(id) PARTITION BY DAY", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -281,12 +298,13 @@ describe("Autocomplete walkthrough", () => {
           expects: ["TABLE"],
         },
         {
-          typed: "CREATE TABLE new_table (id INT, name STRING) TIMESTAMP(id) PARTITION ",
+          typed:
+            "CREATE TABLE new_table (id INT, name STRING) TIMESTAMP(id) PARTITION ",
           expects: ["BY"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   // Expression-related walkthroughs
   describe("SELECT * FROM trades WHERE symbol ILIKE '%btc%'", () => {
@@ -296,9 +314,9 @@ describe("Autocomplete walkthrough", () => {
           typed: "SELECT * FROM trades WHERE symbol ",
           expects: ["LIKE", "ILIKE", "IN", "BETWEEN", "IS"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("SELECT * FROM trades WHERE price BETWEEN 100 AND 200", () => {
     it("should suggest BETWEEN and IN after column in WHERE", () => {
@@ -307,10 +325,10 @@ describe("Autocomplete walkthrough", () => {
           typed: "SELECT * FROM trades WHERE price ",
           expects: ["BETWEEN", "IN", "LIKE", "ILIKE", "IS"],
         },
-      ]);
-    });
-  });
-});
+      ])
+    })
+  })
+})
 
 // =============================================================================
 // Documentation Example Tests
@@ -321,101 +339,134 @@ describe("Documentation examples - autocomplete", () => {
   describe("text operators", () => {
     it("should suggest operators after string literal", () => {
       // SELECT 'a' || 'b' - after 'a' we should get valid next tokens
-      const labels = getLabelsAt(provider, "SELECT 'a' ");
-      expect(labels).toContain("FROM");
-      expect(labels).toContain("AS");
-    });
+      const labels = getLabelsAt(provider, "SELECT 'a' ")
+      expect(labels).toContain("FROM")
+      expect(labels).toContain("AS")
+    })
 
     it("should suggest LIKE and ILIKE in WHERE context", () => {
-      const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE symbol ");
-      expect(labels).toContain("LIKE");
-      expect(labels).toContain("ILIKE");
-    });
-  });
+      const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE symbol ")
+      expect(labels).toContain("LIKE")
+      expect(labels).toContain("ILIKE")
+    })
+  })
 
   // From /query/sql/where.md
   describe("WHERE clause operators", () => {
     it("should suggest IS after column name", () => {
-      const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE price ");
-      expect(labels).toContain("IS");
-    });
+      const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE price ")
+      expect(labels).toContain("IS")
+    })
 
     it("should suggest NOT after IS", () => {
-      const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE price IS ");
-      expect(labels).toContain("NOT");
-    });
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades WHERE price IS ",
+      )
+      expect(labels).toContain("NOT")
+    })
 
     it("should suggest IN after column name", () => {
-      const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE symbol ");
-      expect(labels).toContain("IN");
-    });
+      const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE symbol ")
+      expect(labels).toContain("IN")
+    })
 
     it("should suggest BETWEEN after column name", () => {
-      const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE price ");
-      expect(labels).toContain("BETWEEN");
-    });
-  });
+      const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE price ")
+      expect(labels).toContain("BETWEEN")
+    })
+  })
 
   // From /query/sql/sample-by.md
   describe("SAMPLE BY autocomplete", () => {
     it("should suggest SAMPLE after FROM table clause", () => {
-      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades ");
-      expect(labels).toContain("SAMPLE");
-    });
+      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades ")
+      expect(labels).toContain("SAMPLE")
+    })
 
     it("should suggest BY after SAMPLE", () => {
-      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades SAMPLE ");
-      expect(labels).toContain("BY");
-    });
+      const labels = getLabelsAt(
+        provider,
+        "SELECT avg(price) FROM trades SAMPLE ",
+      )
+      expect(labels).toContain("BY")
+    })
 
     it("should suggest FILL after SAMPLE BY duration", () => {
-      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades SAMPLE BY 1h ");
-      expect(labels).toContain("FILL");
-    });
+      const labels = getLabelsAt(
+        provider,
+        "SELECT avg(price) FROM trades SAMPLE BY 1h ",
+      )
+      expect(labels).toContain("FILL")
+    })
 
     it("should suggest ALIGN after SAMPLE BY duration", () => {
-      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades SAMPLE BY 1h ");
-      expect(labels).toContain("ALIGN");
-    });
+      const labels = getLabelsAt(
+        provider,
+        "SELECT avg(price) FROM trades SAMPLE BY 1h ",
+      )
+      expect(labels).toContain("ALIGN")
+    })
 
     it("should suggest FROM after SAMPLE BY duration (for FROM/TO range)", () => {
-      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades SAMPLE BY 1h ");
-      expect(labels).toContain("FROM");
-    });
+      const labels = getLabelsAt(
+        provider,
+        "SELECT avg(price) FROM trades SAMPLE BY 1h ",
+      )
+      expect(labels).toContain("FROM")
+    })
 
     it("should suggest ALIGN after FILL clause", () => {
-      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades SAMPLE BY 1h FILL(PREV) ");
-      expect(labels).toContain("ALIGN");
-    });
+      const labels = getLabelsAt(
+        provider,
+        "SELECT avg(price) FROM trades SAMPLE BY 1h FILL(PREV) ",
+      )
+      expect(labels).toContain("ALIGN")
+    })
 
     it("should suggest TO after ALIGN", () => {
-      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades SAMPLE BY 1h ALIGN ");
-      expect(labels).toContain("TO");
-    });
+      const labels = getLabelsAt(
+        provider,
+        "SELECT avg(price) FROM trades SAMPLE BY 1h ALIGN ",
+      )
+      expect(labels).toContain("TO")
+    })
 
     it("should suggest CALENDAR and FIRST after ALIGN TO", () => {
-      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades SAMPLE BY 1h ALIGN TO ");
-      expect(labels).toContain("CALENDAR");
-      expect(labels).toContain("FIRST");
-    });
+      const labels = getLabelsAt(
+        provider,
+        "SELECT avg(price) FROM trades SAMPLE BY 1h ALIGN TO ",
+      )
+      expect(labels).toContain("CALENDAR")
+      expect(labels).toContain("FIRST")
+    })
 
     it("should suggest OBSERVATION after FIRST", () => {
-      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades SAMPLE BY 1h ALIGN TO FIRST ");
-      expect(labels).toContain("OBSERVATION");
-    });
+      const labels = getLabelsAt(
+        provider,
+        "SELECT avg(price) FROM trades SAMPLE BY 1h ALIGN TO FIRST ",
+      )
+      expect(labels).toContain("OBSERVATION")
+    })
 
     it("should suggest TIME and WITH after CALENDAR", () => {
-      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades SAMPLE BY 1h ALIGN TO CALENDAR ");
-      expect(labels).toContain("TIME");
-      expect(labels).toContain("WITH");
-    });
+      const labels = getLabelsAt(
+        provider,
+        "SELECT avg(price) FROM trades SAMPLE BY 1h ALIGN TO CALENDAR ",
+      )
+      expect(labels).toContain("TIME")
+      expect(labels).toContain("WITH")
+    })
 
     it("should suggest ZONE after TIME", () => {
-      const labels = getLabelsAt(provider, "SELECT avg(price) FROM trades SAMPLE BY 1h ALIGN TO CALENDAR TIME ");
-      expect(labels).toContain("ZONE");
-    });
-  });
-});
+      const labels = getLabelsAt(
+        provider,
+        "SELECT avg(price) FROM trades SAMPLE BY 1h ALIGN TO CALENDAR TIME ",
+      )
+      expect(labels).toContain("ZONE")
+    })
+  })
+})
 
 // =============================================================================
 // SAMPLE BY Autocomplete Walkthrough
@@ -442,32 +493,36 @@ describe("SAMPLE BY walkthrough", () => {
           expects: ["ALIGN"],
         },
         {
-          typed: "SELECT ts, count() FROM trades SAMPLE BY 1d FILL(NULL) ALIGN ",
+          typed:
+            "SELECT ts, count() FROM trades SAMPLE BY 1d FILL(NULL) ALIGN ",
           expects: ["TO"],
         },
         {
-          typed: "SELECT ts, count() FROM trades SAMPLE BY 1d FILL(NULL) ALIGN TO ",
+          typed:
+            "SELECT ts, count() FROM trades SAMPLE BY 1d FILL(NULL) ALIGN TO ",
           expects: ["CALENDAR", "FIRST"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("SELECT ts, count() FROM trades SAMPLE BY 1h ALIGN TO CALENDAR TIME ZONE 'UTC' WITH OFFSET '00:15'", () => {
     it("should provide correct suggestions at each word boundary", () => {
       assertSuggestionsWalkthrough(provider, [
         {
-          typed: "SELECT ts, count() FROM trades SAMPLE BY 1h ALIGN TO CALENDAR ",
+          typed:
+            "SELECT ts, count() FROM trades SAMPLE BY 1h ALIGN TO CALENDAR ",
           expects: ["TIME", "WITH"],
         },
         {
-          typed: "SELECT ts, count() FROM trades SAMPLE BY 1h ALIGN TO CALENDAR TIME ",
+          typed:
+            "SELECT ts, count() FROM trades SAMPLE BY 1h ALIGN TO CALENDAR TIME ",
           expects: ["ZONE"],
         },
-      ]);
-    });
-  });
-});
+      ])
+    })
+  })
+})
 
 // =============================================================================
 // JOIN Autocomplete Tests (Chunk 3)
@@ -475,32 +530,35 @@ describe("SAMPLE BY walkthrough", () => {
 
 describe("JOIN autocomplete", () => {
   it("should suggest JOIN types after FROM table", () => {
-    const labels = getLabelsAt(provider, "SELECT * FROM trades ");
-    expect(labels).toContain("JOIN");
-    expect(labels).toContain("INNER");
-    expect(labels).toContain("LEFT");
-    expect(labels).toContain("CROSS");
-    expect(labels).toContain("ASOF");
-  });
+    const labels = getLabelsAt(provider, "SELECT * FROM trades ")
+    expect(labels).toContain("JOIN")
+    expect(labels).toContain("INNER")
+    expect(labels).toContain("LEFT")
+    expect(labels).toContain("CROSS")
+    expect(labels).toContain("ASOF")
+  })
 
   it("should suggest JOIN after LEFT/RIGHT/FULL", () => {
-    const labels = getLabelsAt(provider, "SELECT * FROM trades LEFT ");
-    expect(labels).toContain("JOIN");
-    expect(labels).toContain("OUTER");
-  });
+    const labels = getLabelsAt(provider, "SELECT * FROM trades LEFT ")
+    expect(labels).toContain("JOIN")
+    expect(labels).toContain("OUTER")
+  })
 
   it("should suggest ON after JOIN table", () => {
-    const labels = getLabelsAt(provider, "SELECT * FROM trades t JOIN orders o ");
-    expect(labels).toContain("ON");
-  });
+    const labels = getLabelsAt(
+      provider,
+      "SELECT * FROM trades t JOIN orders o ",
+    )
+    expect(labels).toContain("ON")
+  })
 
   it("should suggest TOLERANCE after ON condition in ASOF JOIN", () => {
     const labels = getLabelsAt(
       provider,
-      "SELECT * FROM trades t ASOF JOIN quotes q ON t.ts = q.ts "
-    );
-    expect(labels).toContain("TOLERANCE");
-  });
+      "SELECT * FROM trades t ASOF JOIN quotes q ON t.ts = q.ts ",
+    )
+    expect(labels).toContain("TOLERANCE")
+  })
 
   describe("ASOF JOIN walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -517,10 +575,10 @@ describe("JOIN autocomplete", () => {
           typed: "SELECT * FROM trades ASOF JOIN quotes ",
           expects: ["ON"],
         },
-      ]);
-    });
-  });
-});
+      ])
+    })
+  })
+})
 
 // =============================================================================
 // CREATE TABLE Autocomplete Tests (Chunk 4)
@@ -528,34 +586,43 @@ describe("JOIN autocomplete", () => {
 
 describe("CREATE TABLE autocomplete", () => {
   it("should suggest TABLE after CREATE", () => {
-    const labels = getLabelsAt(provider, "CREATE ");
-    expect(labels).toContain("TABLE");
-  });
+    const labels = getLabelsAt(provider, "CREATE ")
+    expect(labels).toContain("TABLE")
+  })
 
   it("should suggest IF and AS after table name and columns", () => {
-    const labels = getLabelsAt(provider, "CREATE TABLE trades (ts TIMESTAMP) ");
-    expect(labels).toContain("TIMESTAMP");
-    expect(labels).toContain("PARTITION");
-  });
+    const labels = getLabelsAt(provider, "CREATE TABLE trades (ts TIMESTAMP) ")
+    expect(labels).toContain("TIMESTAMP")
+    expect(labels).toContain("PARTITION")
+  })
 
   it("should suggest BY after PARTITION", () => {
-    const labels = getLabelsAt(provider, "CREATE TABLE trades (ts TIMESTAMP) TIMESTAMP(ts) PARTITION ");
-    expect(labels).toContain("BY");
-  });
+    const labels = getLabelsAt(
+      provider,
+      "CREATE TABLE trades (ts TIMESTAMP) TIMESTAMP(ts) PARTITION ",
+    )
+    expect(labels).toContain("BY")
+  })
 
   it("should suggest partition units after PARTITION BY", () => {
-    const labels = getLabelsAt(provider, "CREATE TABLE trades (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY ");
-    expect(labels).toContain("DAY");
-    expect(labels).toContain("HOUR");
-    expect(labels).toContain("MONTH");
-    expect(labels).toContain("YEAR");
-  });
+    const labels = getLabelsAt(
+      provider,
+      "CREATE TABLE trades (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY ",
+    )
+    expect(labels).toContain("DAY")
+    expect(labels).toContain("HOUR")
+    expect(labels).toContain("MONTH")
+    expect(labels).toContain("YEAR")
+  })
 
   it("should suggest WAL and TTL after PARTITION BY UNIT", () => {
-    const labels = getLabelsAt(provider, "CREATE TABLE trades (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY ");
-    expect(labels).toContain("WAL");
-    expect(labels).toContain("TTL");
-  });
+    const labels = getLabelsAt(
+      provider,
+      "CREATE TABLE trades (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY ",
+    )
+    expect(labels).toContain("WAL")
+    expect(labels).toContain("TTL")
+  })
 
   describe("PIVOT walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -572,9 +639,9 @@ describe("CREATE TABLE autocomplete", () => {
           typed: "trades PIVOT (sum(amount) FOR category ",
           expects: ["IN"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("CREATE VIEW walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -595,9 +662,9 @@ describe("CREATE TABLE autocomplete", () => {
           typed: "CREATE OR REPLACE ",
           expects: ["VIEW"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("DROP VIEW walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -610,9 +677,9 @@ describe("CREATE TABLE autocomplete", () => {
           typed: "DROP VIEW ",
           expects: ["IF"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("SHOW walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -625,9 +692,9 @@ describe("CREATE TABLE autocomplete", () => {
           typed: "SHOW CREATE ",
           expects: ["TABLE", "VIEW", "MATERIALIZED"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("CREATE TABLE walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -638,7 +705,8 @@ describe("CREATE TABLE autocomplete", () => {
           rejects: ["SELECT"],
         },
         {
-          typed: "CREATE TABLE trades (ts TIMESTAMP, symbol SYMBOL, price DOUBLE) ",
+          typed:
+            "CREATE TABLE trades (ts TIMESTAMP, symbol SYMBOL, price DOUBLE) ",
           expects: ["TIMESTAMP", "PARTITION"],
         },
         {
@@ -650,13 +718,14 @@ describe("CREATE TABLE autocomplete", () => {
           expects: ["BY"],
         },
         {
-          typed: "CREATE TABLE trades (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY ",
+          typed:
+            "CREATE TABLE trades (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY ",
           expects: ["DAY", "HOUR", "MONTH", "YEAR", "WEEK", "NONE"],
         },
-      ]);
-    });
-  });
-});
+      ])
+    })
+  })
+})
 
 // =============================================================================
 // Materialized View Autocomplete Tests (Chunk 9)
@@ -674,9 +743,9 @@ describe("Materialized View autocomplete", () => {
           typed: "CREATE MATERIALIZED ",
           expects: ["VIEW"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("DROP MATERIALIZED VIEW walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -689,9 +758,9 @@ describe("Materialized View autocomplete", () => {
           typed: "DROP MATERIALIZED ",
           expects: ["VIEW"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("REFRESH MATERIALIZED VIEW walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -704,10 +773,10 @@ describe("Materialized View autocomplete", () => {
           typed: "REFRESH MATERIALIZED ",
           expects: ["VIEW"],
         },
-      ]);
-    });
-  });
-});
+      ])
+    })
+  })
+})
 
 // =============================================================================
 // User/Auth Autocomplete Tests (Chunk 10)
@@ -725,9 +794,9 @@ describe("User/Auth autocomplete", () => {
           typed: "CREATE SERVICE ",
           expects: ["ACCOUNT"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("GRANT walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -736,9 +805,9 @@ describe("User/Auth autocomplete", () => {
           typed: "GRANT ",
           expects: ["SELECT", "INSERT", "UPDATE", "ALL"],
         },
-      ]);
-    });
-  });
+      ])
+    })
+  })
 
   describe("REVOKE walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
@@ -747,10 +816,10 @@ describe("User/Auth autocomplete", () => {
           typed: "REVOKE ",
           expects: ["SELECT", "INSERT", "UPDATE", "ALL"],
         },
-      ]);
-    });
-  });
-});
+      ])
+    })
+  })
+})
 
 // =============================================================================
 // Administrative Operations Autocomplete Tests (Chunk 11)
@@ -758,37 +827,37 @@ describe("User/Auth autocomplete", () => {
 
 describe("Admin operations autocomplete", () => {
   it("should suggest QUERY after CANCEL", () => {
-    const labels = getLabelsAt(provider, "CANCEL ");
-    expect(labels).toContain("QUERY");
-  });
+    const labels = getLabelsAt(provider, "CANCEL ")
+    expect(labels).toContain("QUERY")
+  })
 
   it("should suggest TABLE after VACUUM", () => {
-    const labels = getLabelsAt(provider, "VACUUM ");
-    expect(labels).toContain("TABLE");
-  });
+    const labels = getLabelsAt(provider, "VACUUM ")
+    expect(labels).toContain("TABLE")
+  })
 
   it("should suggest PREPARE and COMPLETE after SNAPSHOT", () => {
-    const labels = getLabelsAt(provider, "SNAPSHOT ");
-    expect(labels).toContain("PREPARE");
-    expect(labels).toContain("COMPLETE");
-  });
+    const labels = getLabelsAt(provider, "SNAPSHOT ")
+    expect(labels).toContain("PREPARE")
+    expect(labels).toContain("COMPLETE")
+  })
 
   it("should suggest WAL after RESUME", () => {
-    const labels = getLabelsAt(provider, "RESUME ");
-    expect(labels).toContain("WAL");
-  });
+    const labels = getLabelsAt(provider, "RESUME ")
+    expect(labels).toContain("WAL")
+  })
 
   it("should suggest TABLE after REINDEX", () => {
-    const labels = getLabelsAt(provider, "REINDEX ");
-    expect(labels).toContain("TABLE");
-  });
+    const labels = getLabelsAt(provider, "REINDEX ")
+    expect(labels).toContain("TABLE")
+  })
 
   it("should suggest CREATE and RELEASE after CHECKPOINT", () => {
-    const labels = getLabelsAt(provider, "CHECKPOINT ");
-    expect(labels).toContain("CREATE");
-    expect(labels).toContain("RELEASE");
-  });
-});
+    const labels = getLabelsAt(provider, "CHECKPOINT ")
+    expect(labels).toContain("CREATE")
+    expect(labels).toContain("RELEASE")
+  })
+})
 
 // =============================================================================
 // DECLARE & EXPLAIN Autocomplete Tests (Chunk 13)
@@ -796,22 +865,22 @@ describe("Admin operations autocomplete", () => {
 
 describe("DECLARE autocomplete", () => {
   it("should suggest DECLARE as a valid statement start", () => {
-    const labels = getLabelsAt(provider, "");
-    expect(labels).toContain("DECLARE");
-  });
-});
+    const labels = getLabelsAt(provider, "")
+    expect(labels).toContain("DECLARE")
+  })
+})
 
 describe("EXPLAIN autocomplete", () => {
   it("should suggest EXPLAIN as a valid statement start", () => {
-    const labels = getLabelsAt(provider, "");
-    expect(labels).toContain("EXPLAIN");
-  });
+    const labels = getLabelsAt(provider, "")
+    expect(labels).toContain("EXPLAIN")
+  })
 
   it("should suggest SELECT after EXPLAIN", () => {
-    const labels = getLabelsAt(provider, "EXPLAIN ");
-    expect(labels).toContain("SELECT");
-  });
-});
+    const labels = getLabelsAt(provider, "EXPLAIN ")
+    expect(labels).toContain("SELECT")
+  })
+})
 
 // =============================================================================
 // Bitwise operators should NOT appear as keyword suggestions
@@ -819,20 +888,20 @@ describe("EXPLAIN autocomplete", () => {
 
 describe("Bitwise operator token classification", () => {
   it("should not suggest bitwise operators as keywords in WHERE", () => {
-    const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE price ");
-    expect(labels).not.toContain("&");
-    expect(labels).not.toContain("^");
-    expect(labels).not.toContain("|");
-    expect(labels).not.toContain("BIT AND");
-    expect(labels).not.toContain("BIT XOR");
-    expect(labels).not.toContain("BIT OR");
-  });
+    const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE price ")
+    expect(labels).not.toContain("&")
+    expect(labels).not.toContain("^")
+    expect(labels).not.toContain("|")
+    expect(labels).not.toContain("BIT AND")
+    expect(labels).not.toContain("BIT XOR")
+    expect(labels).not.toContain("BIT OR")
+  })
 
   it("should suggest WITHIN as a keyword in WHERE", () => {
-    const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE price ");
-    expect(labels).toContain("WITHIN");
-  });
-});
+    const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE price ")
+    expect(labels).toContain("WITHIN")
+  })
+})
 
 // =============================================================================
 // Expression Autocomplete Tests
@@ -840,50 +909,56 @@ describe("Bitwise operator token classification", () => {
 
 describe("Expression autocomplete", () => {
   it("should suggest expression keywords after WHERE", () => {
-    const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE ");
-    expect(labels).toContain("NOT");
-    expect(labels).toContain("CAST");
-    expect(labels).toContain("CASE");
+    const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE ")
+    expect(labels).toContain("NOT")
+    expect(labels).toContain("CAST")
+    expect(labels).toContain("CASE")
     // Columns should be suggested for expression context
-    expect(labels).toContain("symbol");
-    expect(labels).toContain("price");
-  });
+    expect(labels).toContain("symbol")
+    expect(labels).toContain("price")
+  })
 
   it("should suggest clauses after GROUP BY expression", () => {
     // After GROUP BY column, the parser sees expression continuation tokens
-    const labels = getLabelsAt(provider, "SELECT symbol, count() FROM trades GROUP BY symbol ");
-    expect(labels).toContain("ORDER");
-  });
+    const labels = getLabelsAt(
+      provider,
+      "SELECT symbol, count() FROM trades GROUP BY symbol ",
+    )
+    expect(labels).toContain("ORDER")
+  })
 
   it("should suggest AND/OR in WHERE clause after comparison", () => {
-    const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE price > 100 ");
-    expect(labels).toContain("AND");
-    expect(labels).toContain("OR");
-  });
+    const labels = getLabelsAt(
+      provider,
+      "SELECT * FROM trades WHERE price > 100 ",
+    )
+    expect(labels).toContain("AND")
+    expect(labels).toContain("OR")
+  })
 
   it("should suggest NOT after WHERE", () => {
-    const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE ");
-    expect(labels).toContain("NOT");
-  });
-});
+    const labels = getLabelsAt(provider, "SELECT * FROM trades WHERE ")
+    expect(labels).toContain("NOT")
+  })
+})
 
 describe("Implicit SELECT autocomplete", () => {
   it("should suggest columns after implicit select WHERE", () => {
-    const labels = getLabelsAt(provider, "trades WHERE ");
-    expect(labels).toContain("symbol");
-    expect(labels).toContain("price");
-    expect(labels).toContain("NOT");
-    expect(labels).toContain("CASE");
-  });
+    const labels = getLabelsAt(provider, "trades WHERE ")
+    expect(labels).toContain("symbol")
+    expect(labels).toContain("price")
+    expect(labels).toContain("NOT")
+    expect(labels).toContain("CASE")
+  })
 
   it("should suggest keywords after bare table name", () => {
-    const labels = getLabelsAt(provider, "trades ");
-    expect(labels).toContain("WHERE");
-  });
+    const labels = getLabelsAt(provider, "trades ")
+    expect(labels).toContain("WHERE")
+  })
 
   it("should suggest columns for incomplete implicit select in multi-statement context", () => {
-    const labels = getLabelsAt(provider, "SELECT 1; trades WHERE ");
+    const labels = getLabelsAt(provider, "SELECT 1; trades WHERE ")
     // Should get suggestions even after semicolon with implicit select
-    expect(labels.length).toBeGreaterThan(0);
-  });
-});
+    expect(labels.length).toBeGreaterThan(0)
+  })
+})

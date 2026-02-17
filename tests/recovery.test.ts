@@ -27,7 +27,7 @@ function firstToken(
     return { image: n.image, startOffset: n.startOffset }
   if (n.children && typeof n.children === "object") {
     let earliest: { image: string; startOffset: number } | null = null
-    for (const key of Object.keys(n.children as object)) {
+    for (const key of Object.keys(n.children)) {
       const arr = (n.children as Record<string, unknown[]>)[key]
       if (Array.isArray(arr)) {
         for (const child of arr) {
@@ -108,9 +108,7 @@ describe("Semicolon-bounded recovery", () => {
   })
 
   it("nonsense between two valid statements preserves both", () => {
-    const { stmts } = getStatements(
-      "SELECT 1; gibberish stuff here; SELECT 2",
-    )
+    const { stmts } = getStatements("SELECT 1; gibberish stuff here; SELECT 2")
     expect(stmts.length).toBe(4)
     const kw = statementKeywords("SELECT 1; gibberish stuff here; SELECT 2")
     expect(kw).toEqual(["SELECT", "GIBBERISH", "HERE", "SELECT"])

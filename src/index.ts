@@ -1,13 +1,3 @@
-// Core exports
-export { QuestDBLexer, tokenize, allTokens } from "./parser/lexer"
-export { parser, parse } from "./parser/parser"
-export { visitor } from "./parser/visitor"
-export { toSql } from "./parser/toSql"
-
-// AST types
-export * from "./parser/ast"
-
-// High-level API
 import { parse as parseRaw } from "./parser/parser"
 import { visitor } from "./parser/visitor"
 import type { Statement } from "./parser/ast"
@@ -16,6 +6,61 @@ export interface ParseResult {
   ast: Statement[]
   errors: Array<{ message: string; line?: number; column?: number }>
 }
+
+export * from "./parser/ast"
+export type {
+  ContentAssistResult,
+  TableRef,
+} from "./autocomplete/content-assist"
+export type {
+  AutocompleteProvider,
+  Suggestion,
+  SchemaInfo,
+  TableInfo,
+  ColumnInfo,
+} from "./autocomplete/index"
+export { QuestDBLexer, tokenize, allTokens } from "./parser/lexer"
+export { parser, parse } from "./parser/parser"
+export { visitor } from "./parser/visitor"
+export { toSql } from "./parser/toSql"
+export {
+  Select,
+  From,
+  Where,
+  Insert,
+  Update,
+  Delete,
+  Create,
+  Drop,
+  Alter,
+  Table,
+  Sample,
+  By,
+  Latest,
+  On,
+  Partition,
+} from "./parser/lexer"
+export {
+  getContentAssist,
+  getNextValidTokens,
+  isTokenExpected,
+} from "./autocomplete/content-assist"
+export { createAutocompleteProvider } from "./autocomplete/index"
+export { SuggestionKind, SuggestionPriority } from "./autocomplete/index"
+export {
+  IDENTIFIER_TOKENS,
+  IDENTIFIER_KEYWORD_TOKENS,
+  SKIP_TOKENS,
+  tokenNameToKeyword,
+  buildSuggestions,
+} from "./autocomplete/index"
+export {
+  keywords,
+  dataTypes,
+  constants,
+  functions,
+  operators,
+} from "./grammar/index"
 
 /**
  * Parse SQL string to AST
@@ -44,8 +89,12 @@ export function parseToAst(sql: string): ParseResult {
   let ast: Statement[] = []
   try {
     ast = visitor.visit(cst) as Statement[]
-  } catch (e) {
-    // Visitor may fail on incomplete CST — return what we have
+  } catch {
+    // The visitor throws on incomplete CST nodes produced by error recovery
+    // (e.g. "Unknown primary expression", null dereferences on missing children).
+    // Rather than making every visitor method resilient to partial CSTs, we catch
+    // here and return whatever AST was successfully built, along with the parse
+    // errors that already describe what went wrong.
   }
 
   return { ast, errors }
@@ -83,65 +132,3 @@ export function parseOne(sql: string): Statement {
 
   return statements[0]
 }
-
-// Content Assist API for Monaco Editor autocomplete
-export {
-  getContentAssist,
-  getNextValidTokens,
-  isTokenExpected,
-} from "./autocomplete/content-assist"
-export type {
-  ContentAssistResult,
-  TableRef,
-} from "./autocomplete/content-assist"
-
-// Autocomplete Provider API (zero-duplication architecture)
-// This is the recommended way to integrate autocomplete in the UI
-export { createAutocompleteProvider } from "./autocomplete/index"
-export type {
-  AutocompleteProvider,
-  Suggestion,
-  SchemaInfo,
-  TableInfo,
-  ColumnInfo,
-} from "./autocomplete/index"
-export { SuggestionKind, SuggestionPriority } from "./autocomplete/index"
-
-// Advanced autocomplete utilities (for custom implementations)
-export {
-  IDENTIFIER_TOKENS,
-  IDENTIFIER_KEYWORD_TOKENS,
-  SKIP_TOKENS,
-  tokenNameToKeyword,
-  buildSuggestions,
-  buildFallbackSuggestions,
-} from "./autocomplete/index"
-
-// Grammar arrays for Monaco Editor integration (syntax highlighting & completion)
-// These replace @questdb/sql-grammar exports
-export {
-  keywords,
-  dataTypes,
-  constants,
-  functions,
-  operators,
-} from "./grammar/index"
-
-// Re-export commonly used tokens for convenience
-export {
-  Select,
-  From,
-  Where,
-  Insert,
-  Update,
-  Delete,
-  Create,
-  Drop,
-  Alter,
-  Table,
-  Sample,
-  By,
-  Latest,
-  On,
-  Partition,
-} from "./parser/lexer"

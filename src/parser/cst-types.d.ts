@@ -596,7 +596,7 @@ export type CreateTableBodyCstChildren = {
   columnRef?: ColumnRefCstNode[];
   Partition?: IToken[];
   By?: (IToken)[];
-  partitionBy?: PartitionByCstNode[];
+  partitionPeriod?: PartitionPeriodCstNode[];
   Ttl?: IToken[];
   DurationLiteral?: IToken[];
   NumberLiteral?: IToken[];
@@ -786,11 +786,7 @@ export interface MaterializedViewPartitionCstNode extends CstNode {
 export type MaterializedViewPartitionCstChildren = {
   Partition: IToken[];
   By: IToken[];
-  Year?: IToken[];
-  Month?: IToken[];
-  Week?: IToken[];
-  Day?: IToken[];
-  Hour?: IToken[];
+  partitionPeriod: PartitionPeriodCstNode[];
   Ttl?: IToken[];
   NumberLiteral?: IToken[];
   Hours?: IToken[];
@@ -863,12 +859,12 @@ export type TableParamCstChildren = {
   expression?: ExpressionCstNode[];
 };
 
-export interface PartitionByCstNode extends CstNode {
-  name: "partitionBy";
-  children: PartitionByCstChildren;
+export interface PartitionPeriodCstNode extends CstNode {
+  name: "partitionPeriod";
+  children: PartitionPeriodCstChildren;
 }
 
-export type PartitionByCstChildren = {
+export type PartitionPeriodCstChildren = {
   None?: IToken[];
   Hour?: IToken[];
   Day?: IToken[];
@@ -1434,7 +1430,7 @@ export type CopyOptionCstChildren = {
   Partition?: IToken[];
   By?: IToken[];
   PartitionBy?: IToken[];
-  partitionBy?: PartitionByCstNode[];
+  partitionPeriod?: PartitionPeriodCstNode[];
   On?: IToken[];
   Error?: IToken[];
   SkipRow?: IToken[];
@@ -2351,7 +2347,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   indexDefinition(children: IndexDefinitionCstChildren, param?: IN): OUT;
   tableParamName(children: TableParamNameCstChildren, param?: IN): OUT;
   tableParam(children: TableParamCstChildren, param?: IN): OUT;
-  partitionBy(children: PartitionByCstChildren, param?: IN): OUT;
+  partitionPeriod(children: PartitionPeriodCstChildren, param?: IN): OUT;
   timeUnit(children: TimeUnitCstChildren, param?: IN): OUT;
   alterStatement(children: AlterStatementCstChildren, param?: IN): OUT;
   alterGroupStatement(children: AlterGroupStatementCstChildren, param?: IN): OUT;

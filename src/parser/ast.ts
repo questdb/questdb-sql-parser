@@ -464,7 +464,7 @@ export interface SetTypeWalAction {
 
 export interface SuspendWalAction {
   actionType: "suspendWal"
-  code?: string
+  code?: number | string
   message?: string
 }
 
@@ -565,7 +565,7 @@ export interface AssumeServiceAccountStatement extends AstNode {
 
 export interface ExitServiceAccountStatement extends AstNode {
   type: "exitServiceAccount"
-  account: QualifiedName
+  account?: QualifiedName
 }
 
 export interface CancelQueryStatement extends AstNode {
@@ -592,12 +592,8 @@ export interface ShowStatement extends AstNode {
     | "serverVersionNum"
     | "parameters"
     | "timeZone"
-    | "dateStyle"
-    | "searchPath"
     | "transaction"
     | "transactionIsolationLevel"
-    | "standardConformingStrings"
-    | "maxIdentifierLength"
     | "defaultTransactionReadOnly"
   table?: QualifiedName
   name?: QualifiedName
@@ -697,8 +693,8 @@ export interface VacuumTableStatement extends AstNode {
 
 export interface ResumeWalStatement extends AstNode {
   type: "resumeWal"
-  fromTransaction?: string
-  fromTxn?: string
+  fromTransaction?: number
+  fromTxn?: number
 }
 
 export interface SetTypeStatement extends AstNode {
@@ -877,8 +873,8 @@ export interface OrderByItem extends AstNode {
 
 export interface LimitClause extends AstNode {
   type: "limit"
-  count: Expression
-  offset?: Expression
+  lowerBound: Expression
+  upperBound?: Expression
 }
 
 export interface SetClause extends AstNode {
@@ -964,8 +960,8 @@ export interface WindowSpecification extends AstNode {
 
 export interface WindowFrame extends AstNode {
   type: "windowFrame"
-  mode: "rows" | "range"
-  start: WindowFrameBound
+  mode: "rows" | "range" | "groups" | "cumulative"
+  start?: WindowFrameBound
   end?: WindowFrameBound
   exclude?: "currentRow" | "noOthers" | "groups"
 }
