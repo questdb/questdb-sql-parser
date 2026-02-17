@@ -1,7 +1,3 @@
-/**
- * SQL Data Types - Type names used in column definitions
- * Used for: dataType highlighting in Monaco editor
- */
 export const dataTypes: string[] = [
   "binary",
   "boolean",

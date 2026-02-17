@@ -444,8 +444,7 @@ export type InsertStatementCstChildren = {
   Atomic?: IToken[];
   batchClause?: (BatchClauseCstNode)[];
   Into: IToken[];
-  qualifiedName?: QualifiedNameCstNode[];
-  StringLiteral?: IToken[];
+  stringOrQualifiedName: StringOrQualifiedNameCstNode[];
   LParen?: IToken[];
   identifier?: (IdentifierCstNode)[];
   Comma?: IToken[];
@@ -581,6 +580,7 @@ export type CreateTableBodyCstChildren = {
   If?: IToken[];
   Not?: IToken[];
   Exists?: IToken[];
+  stringOrQualifiedName?: StringOrQualifiedNameCstNode[];
   StringLiteral?: (IToken)[];
   qualifiedName?: (QualifiedNameCstNode)[];
   As?: IToken[];
@@ -1235,8 +1235,7 @@ export interface RenameTableStatementCstNode extends CstNode {
 export type RenameTableStatementCstChildren = {
   Rename: IToken[];
   Table: IToken[];
-  qualifiedName?: (QualifiedNameCstNode)[];
-  StringLiteral?: (IToken)[];
+  stringOrQualifiedName: (StringOrQualifiedNameCstNode)[];
   To: IToken[];
 };
 

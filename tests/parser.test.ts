@@ -230,6 +230,19 @@ describe("QuestDB Parser", () => {
       }
     })
 
+    it("should parse INSERT INTO with quoted table name", () => {
+      const result = parseToAst(
+        "INSERT INTO 'my_table' VALUES (1, 2, 3)",
+      )
+
+      expect(result.errors).toHaveLength(0)
+      expect(result.ast[0].type).toBe("insert")
+      if (result.ast[0].type === "insert") {
+        expect(result.ast[0].table.parts).toEqual(["my_table"])
+        expect(result.ast[0].values).toHaveLength(1)
+      }
+    })
+
     it("should parse UPDATE statement", () => {
       const result = parseToAst(
         "UPDATE trades SET price = 200 WHERE symbol = 'BTC'",
@@ -391,6 +404,16 @@ describe("QuestDB Parser", () => {
       const sql = toSql(result.ast[0])
 
       expect(sql).toContain("INSERT INTO trades")
+      expect(sql).toContain("VALUES")
+    })
+
+    it("should serialize INSERT with quoted table name", () => {
+      const result = parseToAst(
+        "INSERT INTO 'my_table' VALUES (1, 2, 3)",
+      )
+      const sql = toSql(result.ast[0])
+
+      expect(sql).toContain("INSERT INTO my_table")
       expect(sql).toContain("VALUES")
     })
 
@@ -597,6 +620,31 @@ describe("QuestDB Parser", () => {
         const result = parseToAst("RENAME TABLE old_trades TO new_trades")
         const sql = toSql(result.ast[0])
         expect(sql).toBe("RENAME TABLE old_trades TO new_trades")
+      })
+
+      it("should parse RENAME TABLE with quoted names", () => {
+        const result = parseToAst("RENAME TABLE 'old.csv' TO 'new_table'")
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "renameTable") {
+          expect(result.ast[0].from.parts).toEqual(["old.csv"])
+          expect(result.ast[0].to.parts).toEqual(["new_table"])
+        }
+      })
+
+      it("should parse RENAME TABLE with mixed quoted and unquoted", () => {
+        const result = parseToAst("RENAME TABLE 'old_name' TO new_table")
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "renameTable") {
+          expect(result.ast[0].from.parts).toEqual(["old_name"])
+          expect(result.ast[0].to.parts).toEqual(["new_table"])
+        }
+      })
+
+      it("should serialize RENAME TABLE with quoted names back to SQL", () => {
+        const result = parseToAst("RENAME TABLE 'old.csv' TO 'new_table'")
+        const sql = toSql(result.ast[0])
+        expect(sql).toContain("RENAME TABLE")
+        expect(sql).toContain("TO")
       })
     })
 
@@ -888,6 +936,21 @@ describe("QuestDB Parser", () => {
         const result = parseToAst("CREATE TABLE new_table (LIKE my_table)")
         expect(result.errors).toHaveLength(0)
         expect(result.ast[0].type).toBe("createTable")
+        if (result.ast[0].type === "createTable") {
+          expect(result.ast[0].table.parts).toEqual(["new_table"])
+          expect(result.ast[0].like?.parts).toEqual(["my_table"])
+        }
+      })
+
+      it("should parse CREATE TABLE with quoted name and LIKE", () => {
+        const result = parseToAst(
+          "CREATE TABLE 'my_table' (LIKE other_table)",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "createTable") {
+          expect(result.ast[0].table.parts).toEqual(["my_table"])
+          expect(result.ast[0].like?.parts).toEqual(["other_table"])
+        }
       })
 
       // Complete example from docs
@@ -2383,6 +2446,15 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(stmt.period?.length).toBeDefined()
     })
 
+    it("should parse PERIOD with LENGTH as identifier", () => {
+      const result = parseToAst(
+        "CREATE MATERIALIZED VIEW mv PERIOD(LENGTH myvar) AS SELECT * FROM t",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.CreateMaterializedViewStatement
+      expect(stmt.period?.length).toBe("myvar")
+    })
+
     it("should parse PERIOD with SAMPLE BY INTERVAL", () => {
       const result = parseToAst(
         "CREATE MATERIALIZED VIEW mv PERIOD (SAMPLE BY INTERVAL) AS (SELECT * FROM t SAMPLE BY 1h) PARTITION BY DAY",
@@ -2985,6 +3057,32 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(stmt.type).toBe("copyFrom")
       expect(stmt.table.parts).toEqual(["trades"])
       expect(stmt.file).toBe("/tmp/data.csv")
+    })
+
+    it("should serialize RESUME WAL FROM TRANSACTION", () => {
+      const stmt: AST.ResumeWalStatement = {
+        type: "resumeWal",
+        fromTransaction: 5,
+      }
+      expect(toSql(stmt)).toBe("RESUME WAL FROM TRANSACTION 5")
+    })
+
+    it("should serialize RESUME WAL FROM TXN", () => {
+      const stmt: AST.ResumeWalStatement = {
+        type: "resumeWal",
+        fromTxn: 10,
+      }
+      expect(toSql(stmt)).toBe("RESUME WAL FROM TXN 10")
+    })
+
+    it("should serialize RESUME WAL with both fields using fromTransaction", () => {
+      const stmt: AST.ResumeWalStatement = {
+        type: "resumeWal",
+        fromTransaction: 5,
+        fromTxn: 10,
+      }
+      // fromTransaction takes precedence (else-if)
+      expect(toSql(stmt)).toBe("RESUME WAL FROM TRANSACTION 5")
     })
   })
 
@@ -4644,78 +4742,88 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(result.errors).toHaveLength(0)
       const stmt = result.ast[0] as AST.SelectStatement
       const col = stmt.columns[0] as AST.ExpressionSelectItem
-      // Outer access: second subscript [3:4]
-      const outer = col.expression as AST.ArrayAccessExpression
-      expect(outer.type).toBe("arrayAccess")
-      expect(outer.subscripts).toHaveLength(1)
-      expect(outer.subscripts[0].type).toBe("arraySlice")
-      // Inner access: first subscript [2:3]
-      const inner = outer.array as AST.ArrayAccessExpression
-      expect(inner.type).toBe("arrayAccess")
-      expect(inner.subscripts).toHaveLength(1)
-      expect(inner.subscripts[0].type).toBe("arraySlice")
+      // Single arrayAccess with both subscripts (nd-array access)
+      const access = col.expression as AST.ArrayAccessExpression
+      expect(access.type).toBe("arrayAccess")
+      expect(access.subscripts).toHaveLength(2)
+      expect(access.subscripts[0].type).toBe("arraySlice")
+      expect(access.subscripts[1].type).toBe("arraySlice")
+      expect((access.array as AST.ColumnRef).type).toBe("column")
     })
 
     // From QuestDB docs: SELECT arr[1, 2:4] subarr FROM tango
-    // Multi-dimension subscripts produce nested arrayAccess nodes
+    // Single bracket pair with mixed subscripts (nd-array access)
     it("should parse mixed index and slice access", () => {
       const result = parseToAst("SELECT arr[1, 2:4] FROM t")
       expect(result.errors).toHaveLength(0)
       const stmt = result.ast[0] as AST.SelectStatement
       const col = stmt.columns[0] as AST.ExpressionSelectItem
-      // Outer access: second subscript [2:4] — a slice
-      const outer = col.expression as AST.ArrayAccessExpression
-      expect(outer.type).toBe("arrayAccess")
-      expect(outer.subscripts[0].type).toBe("arraySlice")
-      // Inner access: first subscript [1] — a simple index
-      const inner = outer.array as AST.ArrayAccessExpression
-      expect(inner.type).toBe("arrayAccess")
-      expect(inner.subscripts[0].type).not.toBe("arraySlice")
+      const access = col.expression as AST.ArrayAccessExpression
+      expect(access.type).toBe("arrayAccess")
+      expect(access.subscripts).toHaveLength(2)
+      expect(access.subscripts[0].type).not.toBe("arraySlice") // index
+      expect(access.subscripts[1].type).toBe("arraySlice") // slice
+      expect((access.array as AST.ColumnRef).type).toBe("column")
     })
 
     // From QuestDB docs: SELECT arr[1:, 3, 2] subarr FROM tango
-    // Multi-dimension subscripts produce nested arrayAccess nodes
+    // Single bracket pair with 3 subscripts (nd-array access)
     it("should parse mixed slice and index access", () => {
       const result = parseToAst("SELECT arr[1:, 3, 2] FROM t")
       expect(result.errors).toHaveLength(0)
       const stmt = result.ast[0] as AST.SelectStatement
       const col = stmt.columns[0] as AST.ExpressionSelectItem
-      // Outermost: third subscript [2]
-      const outer = col.expression as AST.ArrayAccessExpression
-      expect(outer.type).toBe("arrayAccess")
-      expect(outer.subscripts[0].type).not.toBe("arraySlice")
-      // Middle: second subscript [3]
-      const mid = outer.array as AST.ArrayAccessExpression
-      expect(mid.type).toBe("arrayAccess")
-      expect(mid.subscripts[0].type).not.toBe("arraySlice")
-      // Inner: first subscript [1:] — open-ended slice
-      const inner = mid.array as AST.ArrayAccessExpression
-      expect(inner.type).toBe("arrayAccess")
-      const slice = inner.subscripts[0] as AST.ArraySlice
+      const access = col.expression as AST.ArrayAccessExpression
+      expect(access.type).toBe("arrayAccess")
+      expect(access.subscripts).toHaveLength(3)
+      // First subscript [1:] — open-ended slice
+      const slice = access.subscripts[0] as AST.ArraySlice
       expect(slice.type).toBe("arraySlice")
       expect(slice.start).toBeDefined()
       expect(slice.end).toBeUndefined()
+      // Second and third subscripts are simple indexes
+      expect(access.subscripts[1].type).not.toBe("arraySlice")
+      expect(access.subscripts[2].type).not.toBe("arraySlice")
+      expect((access.array as AST.ColumnRef).type).toBe("column")
     })
 
     // From QuestDB docs: SELECT arr[1, 3, 2] elem FROM tango
-    // Multi-dimension subscripts produce nested arrayAccess nodes
+    // Single bracket pair with 3 subscripts (nd-array access)
     it("should parse multi-dimension element access", () => {
       const result = parseToAst("SELECT arr[1, 3, 2] FROM t")
       expect(result.errors).toHaveLength(0)
       const stmt = result.ast[0] as AST.SelectStatement
       const col = stmt.columns[0] as AST.ExpressionSelectItem
-      // Three nested arrayAccess nodes, all with simple index subscripts
-      let node = col.expression as AST.ArrayAccessExpression
-      expect(node.type).toBe("arrayAccess")
-      expect(node.subscripts[0].type).not.toBe("arraySlice")
-      node = node.array as AST.ArrayAccessExpression
-      expect(node.type).toBe("arrayAccess")
-      expect(node.subscripts[0].type).not.toBe("arraySlice")
-      node = node.array as AST.ArrayAccessExpression
-      expect(node.type).toBe("arrayAccess")
-      expect(node.subscripts[0].type).not.toBe("arraySlice")
-      // Innermost array is the column reference
-      expect((node.array as AST.ColumnRef).type).toBe("column")
+      const access = col.expression as AST.ArrayAccessExpression
+      expect(access.type).toBe("arrayAccess")
+      expect(access.subscripts).toHaveLength(3)
+      expect(access.subscripts[0].type).not.toBe("arraySlice")
+      expect(access.subscripts[1].type).not.toBe("arraySlice")
+      expect(access.subscripts[2].type).not.toBe("arraySlice")
+      expect((access.array as AST.ColumnRef).type).toBe("column")
+    })
+
+    it("should produce nested arrayAccess for chained brackets arr[1][2]", () => {
+      const result = parseToAst("SELECT arr[1][2] FROM t")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      const col = stmt.columns[0] as AST.ExpressionSelectItem
+      // Outer: [2]
+      const outer = col.expression as AST.ArrayAccessExpression
+      expect(outer.type).toBe("arrayAccess")
+      expect(outer.subscripts).toHaveLength(1)
+      // Inner: [1]
+      const inner = outer.array as AST.ArrayAccessExpression
+      expect(inner.type).toBe("arrayAccess")
+      expect(inner.subscripts).toHaveLength(1)
+      expect((inner.array as AST.ColumnRef).type).toBe("column")
+    })
+
+    it("should round-trip nd-array access via toSql", () => {
+      const result = parseToAst("SELECT arr[1, 2] FROM t")
+      expect(result.errors).toHaveLength(0)
+      const sql = toSql(result.ast[0])
+      expect(sql).toContain("arr[1, 2]")
     })
   })
 

@@ -1,11 +1,3 @@
-/**
- * SQL Constants - Literal constants and named values
- * Used for: constant.language highlighting in Monaco editor
- *
- * These get a distinct color from keywords in the editor.
- * Includes: boolean literals, time units, compression formats,
- * protocol names, and other named constants.
- */
 export const constants: string[] = [
   "asc",
   "brotli",

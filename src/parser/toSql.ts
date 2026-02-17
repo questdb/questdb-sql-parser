@@ -1248,7 +1248,7 @@ function resumeWalToSql(stmt: AST.ResumeWalStatement): string {
   const parts: string[] = ["RESUME WAL"]
   if (stmt.fromTransaction != null)
     parts.push(`FROM TRANSACTION ${stmt.fromTransaction}`)
-  if (stmt.fromTxn != null) parts.push(`FROM TXN ${stmt.fromTxn}`)
+  else if (stmt.fromTxn != null) parts.push(`FROM TXN ${stmt.fromTxn}`)
   return parts.join(" ")
 }
 
@@ -1670,15 +1670,17 @@ function arrayLiteralToSql(expr: AST.ArrayLiteral): string {
 
 function arrayAccessToSql(expr: AST.ArrayAccessExpression): string {
   let sql = expressionToSql(expr.array)
+  const parts: string[] = []
   for (const sub of expr.subscripts) {
     if ("type" in sub && sub.type === "arraySlice") {
       const start = sub.start ? expressionToSql(sub.start) : ""
       const end = sub.end ? expressionToSql(sub.end) : ""
-      sql += `[${start}:${end}]`
+      parts.push(`${start}:${end}`)
     } else {
-      sql += `[${expressionToSql(sub)}]`
+      parts.push(expressionToSql(sub))
     }
   }
+  sql += `[${parts.join(", ")}]`
   return sql
 }
 

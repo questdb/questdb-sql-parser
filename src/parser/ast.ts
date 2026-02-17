@@ -11,7 +11,6 @@ export interface AstNode {
 // Statements
 // =============================================================================
 
-// Note: QuestDB does not support DELETE - use DROP PARTITION or replace table pattern
 export type Statement =
   | SelectStatement
   | InsertStatement

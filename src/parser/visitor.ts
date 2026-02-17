@@ -833,7 +833,7 @@ class QuestDBVisitor extends BaseVisitor {
   insertStatement(ctx: InsertStatementCstChildren): AST.InsertStatement {
     const result: AST.InsertStatement = {
       type: "insert",
-      table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+      table: this.visit(ctx.stringOrQualifiedName!) as AST.QualifiedName,
     }
 
     if (ctx.withClause) {
@@ -991,12 +991,7 @@ class QuestDBVisitor extends BaseVisitor {
   // ==========================================================================
 
   createTableBody(ctx: CreateTableBodyCstChildren): AST.CreateTableStatement {
-    const table = ctx.qualifiedName
-      ? (this.visit(ctx.qualifiedName) as AST.QualifiedName)
-      : {
-          type: "qualifiedName" as const,
-          parts: [ctx.StringLiteral![0].image.slice(1, -1)],
-        }
+    const table = this.visit(ctx.stringOrQualifiedName!) as AST.QualifiedName
     const result: AST.CreateTableStatement = {
       type: "createTable",
       table,
@@ -1019,8 +1014,8 @@ class QuestDBVisitor extends BaseVisitor {
       )
     }
 
-    if (ctx.Like && ctx.qualifiedName && ctx.qualifiedName.length > 1) {
-      result.like = this.visit(ctx.qualifiedName[1]) as AST.QualifiedName
+    if (ctx.Like && ctx.qualifiedName) {
+      result.like = this.visit(ctx.qualifiedName[0]) as AST.QualifiedName
     }
 
     if (ctx.selectStatement) {
@@ -1995,21 +1990,10 @@ class QuestDBVisitor extends BaseVisitor {
   renameTableStatement(
     ctx: RenameTableStatementCstChildren,
   ): AST.RenameTableStatement {
-    const extractName = (index: number): AST.QualifiedName => {
-      if (ctx.qualifiedName?.[index]) {
-        return this.visit(ctx.qualifiedName[index]) as AST.QualifiedName
-      }
-      // Handle StringLiteral alternative (e.g., RENAME TABLE 'old' TO 'new')
-      if (ctx.StringLiteral?.[index]) {
-        const raw = ctx.StringLiteral[index].image
-        return { type: "qualifiedName", parts: [raw.slice(1, -1)] }
-      }
-      return { type: "qualifiedName", parts: [""] }
-    }
     return {
       type: "renameTable",
-      from: extractName(0),
-      to: extractName(1),
+      from: this.visit(ctx.stringOrQualifiedName[0]) as AST.QualifiedName,
+      to: this.visit(ctx.stringOrQualifiedName[1]) as AST.QualifiedName,
     }
   }
 
@@ -3057,12 +3041,28 @@ class QuestDBVisitor extends BaseVisitor {
     let inner = this.visit(ctx.primaryExpression) as AST.Expression
 
     // Handle array subscripts: expr[i], expr[i:j], expr[i, j]
-    if (ctx.arraySubscript) {
-      for (const sub of ctx.arraySubscript) {
+    // Group subscripts by their enclosing bracket pair so that
+    // arr[1, 2] produces a single ArrayAccessExpression with 2 subscripts (nd-array access),
+    // while arr[1][2] produces two nested ArrayAccessExpressions (chained access).
+    if (ctx.arraySubscript && ctx.LBracket) {
+      let subIdx = 0
+      for (let i = 0; i < ctx.LBracket.length; i++) {
+        const rbOffset = ctx.RBracket![i].startOffset
+        const subscripts: (AST.Expression | AST.ArraySlice)[] = []
+        while (subIdx < ctx.arraySubscript.length) {
+          if (this.getFirstTokenOffset(ctx.arraySubscript[subIdx]) > rbOffset)
+            break
+          subscripts.push(
+            this.visit(ctx.arraySubscript[subIdx]) as
+              | AST.Expression
+              | AST.ArraySlice,
+          )
+          subIdx++
+        }
         inner = {
           type: "arrayAccess",
           array: inner,
-          subscripts: [this.visit(sub) as AST.Expression | AST.ArraySlice],
+          subscripts,
         } as AST.ArrayAccessExpression
       }
     }
@@ -3668,6 +3668,13 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.QuotedIdentifier) {
       const raw = this.tokenImage(ctx.QuotedIdentifier[0] as IToken)
       return raw.slice(1, -1).replace(/""/g, '"')
+    }
+    if (ctx.IdentifierKeyword) {
+      return this.tokenImage(ctx.IdentifierKeyword[0] as IToken)
+    }
+    // Handle identifier subrule (lowercase) — wraps Identifier/QuotedIdentifier/IdentifierKeyword
+    if (ctx.identifier) {
+      return this.extractMaybeString((ctx.identifier as CstNode[])[0])
     }
     return ""
   }

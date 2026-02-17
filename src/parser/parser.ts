@@ -1054,10 +1054,7 @@ class QuestDBParser extends CstParser {
       ])
     })
     this.CONSUME(Into)
-    this.OR2([
-      { ALT: () => this.SUBRULE(this.qualifiedName) },
-      { ALT: () => this.CONSUME(StringLiteral) },
-    ])
+    this.SUBRULE(this.stringOrQualifiedName)
     // Batch clause can also appear after table name
     this.OPTION2(() => this.SUBRULE1(this.batchClause))
     this.OPTION3(() => {
@@ -1222,10 +1219,7 @@ class QuestDBParser extends CstParser {
       this.CONSUME(Not)
       this.CONSUME(Exists)
     })
-    this.OR9([
-      { ALT: () => this.CONSUME9(StringLiteral) },
-      { ALT: () => this.SUBRULE(this.qualifiedName) },
-    ])
+    this.SUBRULE(this.stringOrQualifiedName)
 
     this.OR1([
       // CREATE TABLE AS (SELECT ...)
@@ -2412,15 +2406,9 @@ class QuestDBParser extends CstParser {
   private renameTableStatement = this.RULE("renameTableStatement", () => {
     this.CONSUME(Rename)
     this.CONSUME(Table)
-    this.OR([
-      { ALT: () => this.SUBRULE(this.qualifiedName) },
-      { ALT: () => this.CONSUME(StringLiteral) },
-    ])
+    this.SUBRULE(this.stringOrQualifiedName)
     this.CONSUME(To)
-    this.OR1([
-      { ALT: () => this.SUBRULE1(this.qualifiedName) },
-      { ALT: () => this.CONSUME1(StringLiteral) },
-    ])
+    this.SUBRULE1(this.stringOrQualifiedName)
   })
 
   private addUserStatement = this.RULE("addUserStatement", () => {

@@ -1,10 +1,3 @@
-/**
- * SQL Keywords - Reserved words that have special meaning in SQL syntax
- * Used for: keyword highlighting in Monaco editor
- *
- * Note: Constants (time units, compression formats, etc.) are in constants.ts
- * and get a different highlighting color in Monaco.
- */
 export const keywords: string[] = [
   "abort",
   "account",
@@ -85,6 +78,8 @@ export const keywords: string[] = [
   "group",
   "groups",
   "header",
+  "horizon",
+  "http",
   "if",
   "ignore",
   "ilike",
@@ -171,6 +166,7 @@ export const keywords: string[] = [
   "splice",
   "squash",
   "start",
+  "step",
   "statistics_enabled",
   "suspend",
   "system",
