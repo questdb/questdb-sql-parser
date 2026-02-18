@@ -323,8 +323,10 @@ class QuestDBVisitor extends BaseVisitor {
       inner = this.visit(ctx.insertStatement) as AST.InsertStatement
     } else if (ctx.updateStatement) {
       inner = this.visit(ctx.updateStatement) as AST.UpdateStatement
+    } else if (ctx.selectStatement) {
+      inner = this.visit(ctx.selectStatement) as AST.SelectStatement
     } else {
-      inner = this.visit(ctx.selectStatement!) as AST.SelectStatement
+      throw new Error("withStatement: expected insert, update, or select")
     }
 
     inner.with = ctes
@@ -1013,7 +1015,7 @@ class QuestDBVisitor extends BaseVisitor {
   // ==========================================================================
 
   createTableBody(ctx: CreateTableBodyCstChildren): AST.CreateTableStatement {
-    const table = this.visit(ctx.stringOrQualifiedName!) as AST.QualifiedName
+    const table = this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName
     const result: AST.CreateTableStatement = {
       type: "createTable",
       table,
@@ -2345,8 +2347,8 @@ class QuestDBVisitor extends BaseVisitor {
         ctx.Brotli?.[0] ??
         ctx.Lzo?.[0]
       result.value = codecToken?.image
-    } else if (ctx.Partition || ctx.PartitionBy) {
-      result.value = this.visit(ctx.partitionPeriod!) as
+    } else if (ctx.partitionPeriod && (ctx.Partition || ctx.PartitionBy)) {
+      result.value = this.visit(ctx.partitionPeriod) as
         | "NONE"
         | "HOUR"
         | "DAY"
