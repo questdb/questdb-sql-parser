@@ -838,7 +838,7 @@ class QuestDBVisitor extends BaseVisitor {
   insertStatement(ctx: InsertStatementCstChildren): AST.InsertStatement {
     const result: AST.InsertStatement = {
       type: "insert",
-      table: this.visit(ctx.stringOrQualifiedName!) as AST.QualifiedName,
+      table: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
     }
 
     if (ctx.withClause) {
@@ -2911,9 +2911,7 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   concatExpression(ctx: ConcatExpressionCstChildren): AST.Expression {
-    let result = this.visit(
-      ctx.ipv4ContainmentExpression[0],
-    ) as AST.Expression
+    let result = this.visit(ctx.ipv4ContainmentExpression[0]) as AST.Expression
 
     if (ctx.ipv4ContainmentExpression.length > 1) {
       for (let i = 1; i < ctx.ipv4ContainmentExpression.length; i++) {
@@ -2921,9 +2919,7 @@ class QuestDBVisitor extends BaseVisitor {
           type: "binary",
           operator: "||",
           left: result,
-          right: this.visit(
-            ctx.ipv4ContainmentExpression[i],
-          ) as AST.Expression,
+          right: this.visit(ctx.ipv4ContainmentExpression[i]) as AST.Expression,
         }
       }
     }

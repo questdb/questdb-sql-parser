@@ -136,7 +136,9 @@ describe("QuestDB Lexer", () => {
   // has the dot consumed into the number.
   it("should consume trailing dot into NumberLiteral", () => {
     const result = tokenize("1.")
-    const tokens = result.tokens.filter((t) => t.tokenType.name !== "WhiteSpace")
+    const tokens = result.tokens.filter(
+      (t) => t.tokenType.name !== "WhiteSpace",
+    )
     expect(tokens).toHaveLength(1)
     expect(tokens[0].tokenType.name).toBe("NumberLiteral")
     expect(tokens[0].image).toBe("1.")

@@ -231,9 +231,7 @@ describe("QuestDB Parser", () => {
     })
 
     it("should parse INSERT INTO with quoted table name", () => {
-      const result = parseToAst(
-        "INSERT INTO 'my_table' VALUES (1, 2, 3)",
-      )
+      const result = parseToAst("INSERT INTO 'my_table' VALUES (1, 2, 3)")
 
       expect(result.errors).toHaveLength(0)
       expect(result.ast[0].type).toBe("insert")
@@ -401,8 +399,12 @@ describe("QuestDB Parser", () => {
       )
       expect(result.errors).toHaveLength(0)
       const select = result.ast[0] as AST.SelectStatement
-      expect((select as unknown as Record<string, unknown>).window).toBeUndefined()
-      expect((select as unknown as Record<string, unknown>).windowDefinitions).toBeUndefined()
+      expect(
+        (select as unknown as Record<string, unknown>).window,
+      ).toBeUndefined()
+      expect(
+        (select as unknown as Record<string, unknown>).windowDefinitions,
+      ).toBeUndefined()
 
       const col = select.columns[0] as AST.ExpressionSelectItem
       const fn = col.expression as AST.FunctionCall
@@ -462,9 +464,7 @@ describe("QuestDB Parser", () => {
     })
 
     it("should serialize INSERT with quoted table name", () => {
-      const result = parseToAst(
-        "INSERT INTO 'my_table' VALUES (1, 2, 3)",
-      )
+      const result = parseToAst("INSERT INTO 'my_table' VALUES (1, 2, 3)")
       const sql = toSql(result.ast[0])
 
       expect(sql).toContain("INSERT INTO my_table")
@@ -585,7 +585,10 @@ describe("QuestDB Parser", () => {
           { type: "columnDefinition", name: "name", dataType: "STRING" },
         ],
         indexes: [
-          { type: "indexDefinition", column: { type: "qualifiedName", parts: ["name"] } },
+          {
+            type: "indexDefinition",
+            column: { type: "qualifiedName", parts: ["name"] },
+          },
         ],
       }
       const sql = toSql(stmt)
@@ -609,10 +612,19 @@ describe("QuestDB Parser", () => {
               left: {
                 type: "binary",
                 operator: "+",
-                left: { type: "column", name: { type: "qualifiedName", parts: ["a"] } },
-                right: { type: "column", name: { type: "qualifiedName", parts: ["b"] } },
+                left: {
+                  type: "column",
+                  name: { type: "qualifiedName", parts: ["a"] },
+                },
+                right: {
+                  type: "column",
+                  name: { type: "qualifiedName", parts: ["b"] },
+                },
               } as AST.BinaryExpression,
-              right: { type: "column", name: { type: "qualifiedName", parts: ["c"] } },
+              right: {
+                type: "column",
+                name: { type: "qualifiedName", parts: ["c"] },
+              },
             } as AST.BinaryExpression,
           } as AST.ExpressionSelectItem,
         ],
@@ -1057,9 +1069,7 @@ describe("QuestDB Parser", () => {
       })
 
       it("should parse CREATE TABLE with quoted name and LIKE", () => {
-        const result = parseToAst(
-          "CREATE TABLE 'my_table' (LIKE other_table)",
-        )
+        const result = parseToAst("CREATE TABLE 'my_table' (LIKE other_table)")
         expect(result.errors).toHaveLength(0)
         if (result.ast[0].type === "createTable") {
           expect(result.ast[0].table.parts).toEqual(["my_table"])
@@ -3327,9 +3337,7 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
     })
 
     it("should parse SELECT with star in middle of select list", () => {
-      const result = parseToAst(
-        "SELECT symbol, *, price FROM btc_trades",
-      )
+      const result = parseToAst("SELECT symbol, *, price FROM btc_trades")
       expect(result.errors).toHaveLength(0)
       if (result.ast[0].type === "select") {
         expect(result.ast[0].columns).toHaveLength(3)
@@ -3340,9 +3348,7 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
     })
 
     it("should parse SELECT with multiple expressions before star", () => {
-      const result = parseToAst(
-        "SELECT a, b, c, * FROM t",
-      )
+      const result = parseToAst("SELECT a, b, c, * FROM t")
       expect(result.errors).toHaveLength(0)
       if (result.ast[0].type === "select") {
         expect(result.ast[0].columns).toHaveLength(4)
