@@ -3343,6 +3343,49 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(stmt.type).toBe("select")
     })
 
+    it("should parse SELECT expr, * (star not first)", () => {
+      const result = parseToAst("SELECT amount, * FROM btc_trades")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      expect(stmt.type).toBe("select")
+      if (stmt.type === "select") {
+        expect(stmt.columns).toHaveLength(2)
+        expect(stmt.columns[0].type).toBe("selectItem")
+        expect(stmt.columns[1].type).toBe("star")
+      }
+    })
+
+    it("should roundtrip SELECT expr, *", () => {
+      const result = parseToAst("SELECT amount, * FROM btc_trades")
+      expect(result.errors).toHaveLength(0)
+      const sql = toSql(result.ast[0])
+      expect(sql).toBe("SELECT amount, * FROM btc_trades")
+    })
+
+    it("should parse SELECT with star in middle of select list", () => {
+      const result = parseToAst(
+        "SELECT symbol, *, price FROM btc_trades",
+      )
+      expect(result.errors).toHaveLength(0)
+      if (result.ast[0].type === "select") {
+        expect(result.ast[0].columns).toHaveLength(3)
+        expect(result.ast[0].columns[0].type).toBe("selectItem")
+        expect(result.ast[0].columns[1].type).toBe("star")
+        expect(result.ast[0].columns[2].type).toBe("selectItem")
+      }
+    })
+
+    it("should parse SELECT with multiple expressions before star", () => {
+      const result = parseToAst(
+        "SELECT a, b, c, * FROM t",
+      )
+      expect(result.errors).toHaveLength(0)
+      if (result.ast[0].type === "select") {
+        expect(result.ast[0].columns).toHaveLength(4)
+        expect(result.ast[0].columns[3].type).toBe("star")
+      }
+    })
+
     // --- Fix 4: Array column types ---
 
     it("should parse CREATE TABLE with single-dimension array column type", () => {

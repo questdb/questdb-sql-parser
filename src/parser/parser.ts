@@ -609,6 +609,8 @@ class QuestDBParser extends CstParser {
         GATE: this.BACKTRACK(this.qualifiedStar),
         ALT: () => this.SUBRULE(this.qualifiedStar),
       },
+      // Bare * can appear anywhere in the select list (e.g., SELECT amount, *)
+      { ALT: () => this.CONSUME(Star) },
       { ALT: () => this.SUBRULE(this.expression) },
     ])
     this.OPTION({
@@ -3881,9 +3883,12 @@ class QuestDBParser extends CstParser {
     // keyword token as an identifier, avoiding a 160+ alternative OR that
     // would make performSelfAnalysis() extremely slow.
     // See tokens.ts IDENTIFIER_KEYWORD_NAMES for the full list.
+    // QuestDB accepts single-quoted strings in identifier positions (table names,
+    // column names, aliases), so StringLiteral is accepted here alongside QuotedIdentifier.
     this.OR([
       { ALT: () => this.CONSUME(Identifier) },
       { ALT: () => this.CONSUME(QuotedIdentifier) },
+      { ALT: () => this.CONSUME(StringLiteral) },
       { ALT: () => this.CONSUME(IdentifierKeyword) },
     ])
   })

@@ -454,6 +454,11 @@ class QuestDBVisitor extends BaseVisitor {
       return result
     }
 
+    // Bare * appearing as a non-first select item (e.g., SELECT amount, *)
+    if (ctx.Star) {
+      return { type: "star" }
+    }
+
     const result: AST.ExpressionSelectItem = {
       type: "selectItem",
       expression: this.visit(ctx.expression!) as AST.Expression,
@@ -3731,6 +3736,11 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.QuotedIdentifier) {
       const raw = this.tokenImage(ctx.QuotedIdentifier[0] as IToken)
       return raw.slice(1, -1).replace(/""/g, '"')
+    }
+    // QuestDB accepts single-quoted strings in identifier positions
+    if (ctx.StringLiteral) {
+      const raw = this.tokenImage(ctx.StringLiteral[0] as IToken)
+      return raw.slice(1, -1).replace(/''/g, "'")
     }
     // Handle keyword tokens used as identifiers
     // Find the first token in the context

@@ -142,6 +142,7 @@ export interface SelectItemCstNode extends CstNode {
 
 export type SelectItemCstChildren = {
   qualifiedStar?: QualifiedStarCstNode[];
+  Star?: IToken[];
   expression?: ExpressionCstNode[];
   As?: IToken[];
   identifier?: IdentifierCstNode[];
@@ -2286,6 +2287,7 @@ export interface IdentifierCstNode extends CstNode {
 export type IdentifierCstChildren = {
   Identifier?: IToken[];
   QuotedIdentifier?: IToken[];
+  StringLiteral?: IToken[];
   IdentifierKeyword?: IToken[];
 };
 

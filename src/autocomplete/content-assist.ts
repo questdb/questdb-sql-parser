@@ -477,13 +477,17 @@ export function getContentAssist(
   fullSql: string,
   cursorOffset: number,
 ): ContentAssistResult {
-  // Tokenize the full SQL to check if the cursor is inside a string literal.
-  // If so, suppress suggestions — the user is editing a value, not SQL syntax.
-  // This also covers single-quoted identifiers (FROM 'table'), which is an
-  // acceptable trade-off to avoid fragile context-detection heuristics.
+  // Suppress suggestions when the cursor is inside any quoted string (single or double).
+  // This covers both string literal values and single-quoted identifiers — while QuestDB
+  // accepts single-quoted identifiers, providing completions inside quotes causes more
+  // problems than it solves (prefix filtering breaks, ambiguity with string values).
   const fullTokens = QuestDBLexer.tokenize(fullSql).tokens
   for (const token of fullTokens) {
-    if (token.tokenType.name !== "StringLiteral") continue
+    if (
+      token.tokenType.name !== "StringLiteral" &&
+      token.tokenType.name !== "QuotedIdentifier"
+    )
+      continue
     const start = token.startOffset
     const end = token.startOffset + token.image.length
     if (cursorOffset > start && cursorOffset < end) {
