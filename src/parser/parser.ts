@@ -425,15 +425,6 @@ class QuestDBParser extends CstParser {
     })
   })
 
-  // Lazy-initialized BACKTRACK for WITH ... INSERT disambiguation
-  private _insertBacktrack: (() => boolean) | null = null
-  private getInsertBacktrack(): boolean {
-    if (!this._insertBacktrack) {
-      this._insertBacktrack = this.BACKTRACK(this.insertStatement)
-    }
-    return this._insertBacktrack()
-  }
-
   public statement = this.RULE("statement", () => {
     // Record token position so findReSyncTokenType can distinguish
     // "statement's OR failed" (no tokens consumed) from "error cascaded
@@ -441,19 +432,19 @@ class QuestDBParser extends CstParser {
     this._statementStartIdx = (this as unknown as CstParserInternals).currIdx
     this.OR([
       {
-        // Use simple token check for INSERT (common case) so error recovery
-        // works for incomplete statements. Only fall back to BACKTRACK for
-        // WITH ... INSERT (ambiguous with selectStatement's WITH clause).
-        GATE: () => {
-          const la1 = this.LA(1).tokenType
-          if (la1 === Insert) return true
-          if (la1 === With) return this.getInsertBacktrack()
-          return false
-        },
+        // WITH-prefixed statements (CTE): parse WITH clause once, then
+        // dispatch to the correct body via keyword lookahead. This avoids
+        // BACKTRACK gates that re-parse the entire CTE prefix for each
+        // alternative.
+        GATE: () => this.LA(1).tokenType === With,
+        ALT: () => this.SUBRULE(this.withStatement),
+      },
+      {
+        GATE: () => this.LA(1).tokenType === Insert,
         ALT: () => this.SUBRULE(this.insertStatement),
       },
       {
-        GATE: this.BACKTRACK(this.updateStatement),
+        GATE: () => this.LA(1).tokenType === Update,
         ALT: () => this.SUBRULE(this.updateStatement),
       },
       { ALT: () => this.SUBRULE(this.selectStatement) },
@@ -498,6 +489,34 @@ class QuestDBParser extends CstParser {
         ALT: () => this.SUBRULE(this.compileViewStatement),
       },
       { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
+    ])
+  })
+
+  // ==========================================================================
+  // WITH Statement (CTE wrapper)
+  // ==========================================================================
+  //
+  // Parses the WITH clause once, then dispatches to the correct body
+  // (INSERT, UPDATE, or SELECT) via simple keyword lookahead.
+  // This avoids the old BACKTRACK gates which re-parsed the entire CTE
+  // prefix for each alternative, causing O(n*alternatives) work.
+
+  private withStatement = this.RULE("withStatement", () => {
+    this.SUBRULE(this.withClause)
+    this.OR([
+      {
+        GATE: () => this.LA(1).tokenType === Insert,
+        ALT: () => this.SUBRULE(this.insertStatement),
+      },
+      {
+        GATE: () => this.LA(1).tokenType === Update,
+        ALT: () => this.SUBRULE(this.updateStatement),
+      },
+      {
+        // SELECT: delegate to selectStatement (its optional declareClause/
+        // withClause simply won't match since WITH was already consumed)
+        ALT: () => this.SUBRULE(this.selectStatement),
+      },
     ])
   })
 
@@ -1045,7 +1064,6 @@ class QuestDBParser extends CstParser {
   // ==========================================================================
 
   private insertStatement = this.RULE("insertStatement", () => {
-    this.OPTION(() => this.SUBRULE(this.withClause))
     this.CONSUME(Insert)
     this.OPTION1(() => {
       this.OR([
@@ -1098,7 +1116,6 @@ class QuestDBParser extends CstParser {
   // ==========================================================================
 
   private updateStatement = this.RULE("updateStatement", () => {
-    this.OPTION4(() => this.SUBRULE(this.withClause))
     this.CONSUME(Update)
     this.SUBRULE(this.qualifiedName)
     // Optional alias

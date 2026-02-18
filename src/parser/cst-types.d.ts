@@ -16,6 +16,7 @@ export interface StatementCstNode extends CstNode {
 }
 
 export type StatementCstChildren = {
+  withStatement?: WithStatementCstNode[];
   insertStatement?: InsertStatementCstNode[];
   updateStatement?: UpdateStatementCstNode[];
   selectStatement?: SelectStatementCstNode[];
@@ -47,6 +48,18 @@ export type StatementCstChildren = {
   backupStatement?: BackupStatementCstNode[];
   compileViewStatement?: CompileViewStatementCstNode[];
   implicitSelectStatement?: ImplicitSelectStatementCstNode[];
+};
+
+export interface WithStatementCstNode extends CstNode {
+  name: "withStatement";
+  children: WithStatementCstChildren;
+}
+
+export type WithStatementCstChildren = {
+  withClause: WithClauseCstNode[];
+  insertStatement?: InsertStatementCstNode[];
+  updateStatement?: UpdateStatementCstNode[];
+  selectStatement?: SelectStatementCstNode[];
 };
 
 export interface SelectStatementCstNode extends CstNode {
@@ -438,7 +451,6 @@ export interface InsertStatementCstNode extends CstNode {
 }
 
 export type InsertStatementCstChildren = {
-  withClause?: WithClauseCstNode[];
   Insert: IToken[];
   Atomic?: IToken[];
   batchClause?: (BatchClauseCstNode)[];
@@ -481,7 +493,6 @@ export interface UpdateStatementCstNode extends CstNode {
 }
 
 export type UpdateStatementCstChildren = {
-  withClause?: WithClauseCstNode[];
   Update: IToken[];
   qualifiedName: QualifiedNameCstNode[];
   identifier?: IdentifierCstNode[];
@@ -2282,6 +2293,7 @@ export type IdentifierCstChildren = {
 export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   statements(children: StatementsCstChildren, param?: IN): OUT;
   statement(children: StatementCstChildren, param?: IN): OUT;
+  withStatement(children: WithStatementCstChildren, param?: IN): OUT;
   selectStatement(children: SelectStatementCstChildren, param?: IN): OUT;
   withClause(children: WithClauseCstChildren, param?: IN): OUT;
   cteDefinition(children: CteDefinitionCstChildren, param?: IN): OUT;

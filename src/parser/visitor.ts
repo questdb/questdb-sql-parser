@@ -160,6 +160,7 @@ import type {
   WindowJoinBoundCstChildren,
   WindowPartitionByClauseCstChildren,
   WithClauseCstChildren,
+  WithStatementCstChildren,
 } from "./cst-types"
 
 type FromToClauseResult = { from?: AST.Expression; to?: AST.Expression }
@@ -199,6 +200,9 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   statement(ctx: StatementCstChildren): AST.Statement {
+    if (ctx.withStatement) {
+      return this.visit(ctx.withStatement) as AST.Statement
+    }
     if (ctx.selectStatement) {
       return this.visit(ctx.selectStatement) as AST.SelectStatement
     }
@@ -305,6 +309,26 @@ class QuestDBVisitor extends BaseVisitor {
       return this.visit(ctx.implicitSelectStatement) as AST.SelectStatement
     }
     throw new Error("Unknown statement type")
+  }
+
+  // ==========================================================================
+  // WITH Statement (WITH ... SELECT/INSERT/UPDATE)
+  // ==========================================================================
+
+  withStatement(ctx: WithStatementCstChildren): AST.Statement {
+    const ctes = this.visit(ctx.withClause) as AST.CTE[]
+
+    let inner: AST.InsertStatement | AST.UpdateStatement | AST.SelectStatement
+    if (ctx.insertStatement) {
+      inner = this.visit(ctx.insertStatement) as AST.InsertStatement
+    } else if (ctx.updateStatement) {
+      inner = this.visit(ctx.updateStatement) as AST.UpdateStatement
+    } else {
+      inner = this.visit(ctx.selectStatement!) as AST.SelectStatement
+    }
+
+    inner.with = ctes
+    return inner
   }
 
   // ==========================================================================
@@ -841,9 +865,6 @@ class QuestDBVisitor extends BaseVisitor {
       table: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
     }
 
-    if (ctx.withClause) {
-      result.with = this.visit(ctx.withClause) as AST.CTE[]
-    }
     if (ctx.Atomic) {
       result.atomic = true
     }
@@ -901,10 +922,6 @@ class QuestDBVisitor extends BaseVisitor {
       type: "update",
       table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
       set: ctx.setClause.map((s: CstNode) => this.visit(s) as AST.SetClause),
-    }
-
-    if (ctx.withClause) {
-      result.with = this.visit(ctx.withClause) as AST.CTE[]
     }
 
     if (ctx.identifier) {

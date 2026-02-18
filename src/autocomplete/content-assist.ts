@@ -1,20 +1,13 @@
 import { type ILexingError, IToken, TokenType } from "chevrotain"
 import { parser, parse as parseRaw } from "../parser/parser"
 import { visitor } from "../parser/visitor"
-import { QuestDBLexer, IdentifierKeyword } from "../parser/lexer"
+import { QuestDBLexer } from "../parser/lexer"
 import type { Statement } from "../parser/ast"
 import { IDENTIFIER_KEYWORD_TOKENS } from "./token-classification"
 
 // =============================================================================
 // Constants
 // =============================================================================
-
-/**
- * When the token count exceeds this threshold, skip Chevrotain's
- * computeContentAssist (which is exponential on deeply nested CTEs)
- * and return IdentifierKeyword to trigger table/column suggestions.
- */
-const CONTENT_ASSIST_TOKEN_LIMIT = 150
 
 const WORD_BOUNDARY_CHARS = new Set([
   " ",
@@ -357,13 +350,6 @@ function collapseTrailingQualifiedRef(tokens: IToken[]): IToken[] | null {
  * from all WITH-capable statement types.
  */
 function computeSuggestions(tokens: IToken[]): TokenType[] {
-  // For large token sequences (deeply nested CTEs), Chevrotain's
-  // computeContentAssist becomes exponentially slow. Fall back to a
-  // generic set of suggestions to avoid freezing the editor.
-  if (tokens.length > CONTENT_ASSIST_TOKEN_LIMIT) {
-    return [IdentifierKeyword]
-  }
-
   const ruleName = tokens.some((t) => t.tokenType.name === "Semicolon")
     ? "statements"
     : "statement"
@@ -381,26 +367,6 @@ function computeSuggestions(tokens: IToken[]): TokenType[] {
   const result = (specific.length > 0 ? specific : suggestions).map(
     (s) => s.nextTokenType,
   )
-
-  // CTE fix: When tokens start with WITH, computeContentAssist at the
-  // "statement" level only explores insertStatement (which comes first in
-  // the OR). We also need suggestions from selectStatement and updateStatement.
-  if (tokens.length > 0 && tokens[0].tokenType.name === "With") {
-    const seen = new Set(result.map((t) => t.name))
-    for (const rule of ["selectStatement", "updateStatement"]) {
-      try {
-        const extra = parser.computeContentAssist(rule, tokens)
-        for (const s of extra) {
-          if (!seen.has(s.nextTokenType.name)) {
-            seen.add(s.nextTokenType.name)
-            result.push(s.nextTokenType)
-          }
-        }
-      } catch (e) {
-        // Rule may not match — ignore
-      }
-    }
-  }
 
   // qualifiedStar fix: When computeContentAssist finds the qualifiedStar
   // path in selectItem (suggesting just Dot), the expression path is missed.

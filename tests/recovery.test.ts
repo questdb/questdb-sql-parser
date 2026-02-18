@@ -81,10 +81,10 @@ describe("Semicolon-bounded recovery", () => {
     ].join("\n")
 
     const { stmts } = getStatements(input)
-    expect(stmts.length).toBe(4)
+    expect(stmts.length).toBe(5)
 
     const kw = statementKeywords(input)
-    expect(kw).toEqual(["CREATE", "SELECT", "INSERT"])
+    expect(kw).toEqual(["CREATE", "SELECT", "UPDATE", "SELECT", "INSERT"])
 
     const lastStmt = stmts[stmts.length - 1]
     const lastFirstTok = firstToken(lastStmt)
@@ -230,7 +230,7 @@ describe("Incomplete statement recovery", () => {
 
   it("UPDATE without SET", () => {
     const result = parseToAst("UPDATE t")
-    expect(result.errors.length).toBe(2)
+    expect(result.errors.length).toBe(1)
     expect(result.ast.length).toBe(0)
   })
 
@@ -597,7 +597,7 @@ describe("Clause-level recovery", () => {
 
   it("incomplete UPDATE SET", () => {
     const result = parseToAst("UPDATE t SET x =")
-    expect(result.errors.length).toBe(2)
+    expect(result.errors.length).toBe(1)
     expect(result.ast.length).toBe(0)
   })
 

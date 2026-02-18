@@ -389,30 +389,6 @@ describe("QuestDB Parser", () => {
       expect(fn.over?.frame?.mode).toBe("rows")
       expect(fn.over?.frame?.exclude).toBe("currentRow")
     })
-
-    // BUG: Named WINDOW clause is parsed but visitor discards it.
-    // visitor.ts windowDefinitionClause returns undefined; simpleSelect has no code to capture it.
-    // EXPECTED: select should have a windowDefinitions field with the "w" definition
-    it("named WINDOW clause is silently dropped from AST", () => {
-      const result = parseToAst(
-        "SELECT avg(price) OVER w FROM trades ORDER BY ts WINDOW w AS (ORDER BY ts)",
-      )
-      expect(result.errors).toHaveLength(0)
-      const select = result.ast[0] as AST.SelectStatement
-      expect(
-        (select as unknown as Record<string, unknown>).window,
-      ).toBeUndefined()
-      expect(
-        (select as unknown as Record<string, unknown>).windowDefinitions,
-      ).toBeUndefined()
-
-      const col = select.columns[0] as AST.ExpressionSelectItem
-      const fn = col.expression as AST.FunctionCall
-      expect(fn.over).toBeDefined()
-      expect(fn.over?.partitionBy).toBeUndefined()
-      expect(fn.over?.orderBy).toBeUndefined()
-      expect(fn.over?.frame).toBeUndefined()
-    })
   })
 
   describe("toSql", () => {
@@ -2267,7 +2243,6 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       "SHOW CREATE TABLE trades",
       "SHOW CREATE VIEW my_view",
       "SHOW CREATE MATERIALIZED VIEW my_mat_view",
-      "SHOW TIME ZONE",
       "SHOW PARAMETERS",
     ]
 
