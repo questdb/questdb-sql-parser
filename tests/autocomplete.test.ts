@@ -984,3 +984,398 @@ describe("Implicit SELECT autocomplete", () => {
     expect(labels.length).toBeGreaterThan(0)
   })
 })
+
+describe("CTE autocomplete", () => {
+  // ---------------------------------------------------------------------------
+  // Basic CTE suggestions
+  // ---------------------------------------------------------------------------
+  it("should suggest CTE name as table in FROM position", () => {
+    const sql = "WITH cte AS (SELECT symbol FROM trades) SELECT * FROM "
+    const labels = getLabelsAt(provider, sql)
+    expect(labels).toContain("cte")
+  })
+
+  it("should suggest CTE columns in SELECT position", () => {
+    const sql =
+      "WITH cte AS (SELECT symbol, price FROM trades) SELECT  FROM cte"
+    const cursorOffset = sql.indexOf(" FROM cte")
+    const labels = getLabelsAt(provider, sql, cursorOffset)
+    expect(labels).toContain("symbol")
+    expect(labels).toContain("price")
+  })
+
+  it("should suggest aliased CTE columns", () => {
+    const sql =
+      "WITH cte AS (SELECT symbol AS sym, price AS p FROM trades) SELECT  FROM cte"
+    const cursorOffset = sql.indexOf(" FROM cte")
+    const labels = getLabelsAt(provider, sql, cursorOffset)
+    expect(labels).toContain("sym")
+    expect(labels).toContain("p")
+  })
+
+  it("should suggest columns from multiple CTEs", () => {
+    const sql =
+      "WITH a AS (SELECT symbol FROM trades), b AS (SELECT id FROM orders) SELECT  FROM a, b"
+    const cursorOffset = sql.indexOf(" FROM a, b")
+    const labels = getLabelsAt(provider, sql, cursorOffset)
+    expect(labels).toContain("symbol")
+    expect(labels).toContain("id")
+  })
+
+  it("should suggest both CTE names as tables", () => {
+    const sql = "WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM "
+    const labels = getLabelsAt(provider, sql)
+    expect(labels).toContain("a")
+    expect(labels).toContain("b")
+  })
+
+  // ---------------------------------------------------------------------------
+  // Doc: with.md — Multiple CTEs referencing each other
+  // ---------------------------------------------------------------------------
+  it("should suggest both CTE names when second references first", () => {
+    const sql =
+      "WITH first_10 AS (SELECT * FROM users LIMIT 10), first_5 AS (SELECT * FROM first_10 LIMIT 5) SELECT  FROM "
+    const labels = getLabelsAt(provider, sql)
+    expect(labels).toContain("first_10")
+    expect(labels).toContain("first_5")
+  })
+
+  // ---------------------------------------------------------------------------
+  // Doc: with.md — CTE with CROSS JOIN
+  // ---------------------------------------------------------------------------
+  it("should suggest CTE aliased column in SELECT with CROSS JOIN", () => {
+    const sql =
+      "WITH avg_price AS (SELECT avg(price) AS average FROM trades) SELECT  FROM trades CROSS JOIN avg_price"
+    // Use "SELECT  FROM" (double space) to target the outer query gap, not the CTE body
+    const offset = sql.indexOf("SELECT  FROM") + "SELECT ".length
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("average")
+    expect(cols).toContain("symbol")
+    expect(cols).toContain("price")
+  })
+
+  it("should suggest CTE name in CROSS JOIN position", () => {
+    const sql =
+      "WITH avg_price AS (SELECT avg(price) AS average FROM trades) SELECT timestamp FROM trades CROSS JOIN "
+    const labels = getLabelsAt(provider, sql)
+    expect(labels).toContain("avg_price")
+  })
+
+  // ---------------------------------------------------------------------------
+  // Doc: with.md — CTE with UPDATE and INSERT
+  // ---------------------------------------------------------------------------
+  it("should suggest UPDATE, SELECT, INSERT after CTE definition", () => {
+    const sql = "WITH up AS (SELECT symbol FROM trades) "
+    const labels = getLabelsAt(provider, sql)
+    expect(labels).toContain("UPDATE")
+    expect(labels).toContain("SELECT")
+    expect(labels).toContain("INSERT")
+  })
+
+  // ---------------------------------------------------------------------------
+  // Doc: bollinger-bands.md — Multi-CTE with window function aliases
+  // ---------------------------------------------------------------------------
+  it("should suggest first CTE columns inside second CTE SELECT", () => {
+    const ohlcCte =
+      "WITH OHLC AS (SELECT timestamp, symbol, first(price) AS open, max(price) AS high, min(price) AS low, last(price) AS close, sum(amount) AS volume FROM trades SAMPLE BY 15m)"
+    const sql = `${ohlcCte}, stats AS (SELECT  FROM OHLC)`
+    const offset = ohlcCte.length + ", stats AS (SELECT ".length
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("close")
+    expect(cols).toContain("timestamp")
+  })
+
+  it("should suggest second CTE columns in final SELECT", () => {
+    const sql =
+      "WITH OHLC AS (SELECT timestamp, last(price) AS close FROM trades SAMPLE BY 15m), stats AS (SELECT timestamp, close, AVG(close) OVER (ORDER BY timestamp ROWS 19 PRECEDING) AS sma20 FROM OHLC) SELECT  FROM stats"
+    const offset = sql.indexOf(" FROM stats")
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("timestamp")
+    expect(cols).toContain("close")
+    expect(cols).toContain("sma20")
+  })
+
+  it("should suggest first CTE as table in second CTE FROM", () => {
+    const sql =
+      "WITH OHLC AS (SELECT timestamp, last(price) AS close FROM trades SAMPLE BY 15m), stats AS (SELECT close FROM "
+    const labels = getLabelsAt(provider, sql)
+    expect(labels).toContain("OHLC")
+  })
+
+  // ---------------------------------------------------------------------------
+  // Doc: top-n-plus-others.md — Three-CTE chain
+  // ---------------------------------------------------------------------------
+  it("should suggest columns from three-CTE chain", () => {
+    const sql =
+      "WITH totals AS (SELECT symbol, count() AS total FROM trades), ranked AS (SELECT symbol, total, rank() OVER (ORDER BY total DESC) AS ranking FROM totals) SELECT  FROM ranked"
+    const offset = sql.indexOf(" FROM ranked")
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("symbol")
+    expect(cols).toContain("total")
+    expect(cols).toContain("ranking")
+  })
+
+  // ---------------------------------------------------------------------------
+  // Doc: aggressor-volume-imbalance.md — CTE with CASE+SUM aliases
+  // ---------------------------------------------------------------------------
+  it("should suggest CASE/SUM aliased CTE columns", () => {
+    const sql =
+      "WITH volumes AS (SELECT symbol, SUM(CASE WHEN side = 'buy' THEN amount ELSE 0 END) AS buy_volume, SUM(CASE WHEN side = 'sell' THEN amount ELSE 0 END) AS sell_volume FROM trades) SELECT  FROM volumes"
+    const offset = sql.indexOf(" FROM volumes")
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("symbol")
+    expect(cols).toContain("buy_volume")
+    expect(cols).toContain("sell_volume")
+  })
+
+  // ---------------------------------------------------------------------------
+  // Doc: latest-n-per-partition.md — CTE columns in WHERE clause
+  // ---------------------------------------------------------------------------
+  it("should suggest CTE columns in WHERE position", () => {
+    const sql =
+      "WITH ranked AS (SELECT timestamp, symbol, price, row_number() OVER (PARTITION BY symbol ORDER BY timestamp DESC) AS rn FROM trades) SELECT symbol, price FROM ranked WHERE "
+    const suggestions = provider.getSuggestions(sql, sql.length)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("rn")
+    expect(cols).toContain("symbol")
+    expect(cols).toContain("price")
+  })
+
+  // ---------------------------------------------------------------------------
+  // Doc: volume-spike.md — Chained CTEs
+  // ---------------------------------------------------------------------------
+  it("should suggest columns from chained CTEs", () => {
+    const sql =
+      "WITH candles AS (SELECT timestamp, symbol, sum(amount) AS volume FROM trades SAMPLE BY 30s), prev_volumes AS (SELECT timestamp, symbol, volume, LAG(volume) OVER (PARTITION BY symbol ORDER BY timestamp) AS prev_volume FROM candles) SELECT  FROM prev_volumes"
+    const offset = sql.indexOf(" FROM prev_volumes")
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("timestamp")
+    expect(cols).toContain("symbol")
+    expect(cols).toContain("volume")
+    expect(cols).toContain("prev_volume")
+  })
+
+  // ---------------------------------------------------------------------------
+  // Doc: rolling-stddev.md — CTE with window function aliases
+  // ---------------------------------------------------------------------------
+  it("should suggest window function aliased columns from CTE", () => {
+    const sql =
+      "WITH stats AS (SELECT timestamp, symbol, price, AVG(price) OVER (PARTITION BY symbol ORDER BY timestamp) AS rolling_avg, AVG(price * price) OVER (PARTITION BY symbol ORDER BY timestamp) AS rolling_avg_sq FROM trades) SELECT  FROM stats"
+    const offset = sql.indexOf(" FROM stats")
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("timestamp")
+    expect(cols).toContain("symbol")
+    expect(cols).toContain("price")
+    expect(cols).toContain("rolling_avg")
+    expect(cols).toContain("rolling_avg_sq")
+  })
+
+  // ---------------------------------------------------------------------------
+  // Edge cases
+  // ---------------------------------------------------------------------------
+  it("CTE columns in GROUP BY position", () => {
+    const sql =
+      "WITH totals AS (SELECT symbol, count() AS total FROM trades) SELECT symbol, total FROM totals GROUP BY "
+    const suggestions = provider.getSuggestions(sql, sql.length)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("symbol")
+    expect(cols).toContain("total")
+  })
+
+  it("CTE columns in ORDER BY position", () => {
+    const sql =
+      "WITH totals AS (SELECT symbol, count() AS total FROM trades) SELECT symbol, total FROM totals ORDER BY "
+    const suggestions = provider.getSuggestions(sql, sql.length)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("symbol")
+    expect(cols).toContain("total")
+  })
+
+  it("CTE columns with mid-word prefix filtering", () => {
+    const sql =
+      "WITH cte AS (SELECT symbol, price FROM trades) SELECT sy FROM cte"
+    const offset = sql.indexOf("sy") + 2
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("symbol")
+  })
+
+  it("CTE with mixed bare columns and function aliases", () => {
+    const sql =
+      "WITH cte AS (SELECT symbol, avg(price) AS avg_price FROM trades) SELECT  FROM cte"
+    const offset = sql.indexOf(" FROM cte")
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("symbol")
+    expect(cols).toContain("avg_price")
+  })
+
+  it("CTE with literal-only select should not crash", () => {
+    const sql = "WITH cte AS (SELECT 1, 'hello') SELECT  FROM cte"
+    const offset = sql.indexOf(" FROM cte")
+    // Should not crash, just might not have column suggestions
+    const labels = getLabelsAt(provider, sql, offset)
+    expect(labels.length).toBeGreaterThan(0)
+  })
+
+  it("CTE with SELECT * should fallback to schema columns", () => {
+    const sql =
+      "WITH cte AS (SELECT * FROM users LIMIT 10) SELECT  FROM cte"
+    const offset = sql.indexOf(" FROM cte")
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    // Can't extract columns from SELECT *, should fallback to all schema columns
+    expect(cols.length).toBeGreaterThan(0)
+  })
+
+  it("should suggest identifier after comma between CTEs", () => {
+    const sql = "WITH cte AS (SELECT * FROM users LIMIT 10), "
+    const labels = getLabelsAt(provider, sql)
+    // Should be able to type a new CTE name
+    expect(labels.length).toBeGreaterThan(0)
+  })
+
+  it("should not leak inner CTE source table columns into outer scope", () => {
+    // CTE selects only "id" from orders. "status" is an orders column
+    // but should NOT appear in outer suggestions since orders is not
+    // in the outer FROM — only "cte" is.
+    const sql =
+      "WITH cte AS (SELECT id AS order_id FROM orders) SELECT  FROM cte"
+    const offset = sql.indexOf(" FROM cte")
+    const cols = provider
+      .getSuggestions(sql, offset)
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("order_id")
+    expect(cols).not.toContain("status")
+  })
+
+  it("should not produce duplicate CTE table suggestions", () => {
+    const sql =
+      "WITH cte AS (SELECT symbol FROM trades) SELECT * FROM "
+    const tables = provider
+      .getSuggestions(sql, sql.length)
+      .filter((s) => s.kind === SuggestionKind.Table)
+      .map((s) => s.label)
+    const cteCount = tables.filter((l) => l === "cte").length
+    expect(cteCount).toBe(1)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Regression: alias position / CTE scope fixes
+  // ---------------------------------------------------------------------------
+
+  it("should NOT suggest columns after WITH name AS ( — subquery start", () => {
+    const sql = "WITH something AS ( ) SELECT * FROM something"
+    const offset = sql.indexOf("(") + 2 // cursor inside the paren
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toEqual([])
+    // Should still suggest keywords like SELECT
+    const kws = suggestions.map((s) => s.label)
+    expect(kws).toContain("SELECT")
+  })
+
+  it("should NOT self-reference CTE columns inside its own body", () => {
+    const sql =
+      "WITH something AS (SELECT symbol FROM trades) SELECT symbol FROM something"
+    // Cursor inside CTE body after "SELECT symbol "
+    const offset = sql.indexOf("SELECT symbol") + "SELECT symbol ".length
+    const suggestions = provider.getSuggestions(sql, offset)
+    const colDetails = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => ({ label: s.label, detail: s.detail }))
+    // CTE "something" should not self-reference
+    for (const col of colDetails) {
+      expect(col.detail ?? "").not.toContain("something")
+    }
+    const tables = suggestions
+      .filter((s) => s.kind === SuggestionKind.Table)
+      .map((s) => s.label)
+    expect(tables).not.toContain("something")
+  })
+
+  it("should NOT suggest columns after identifier without comma (alias position)", () => {
+    const sql = "SELECT symbol FROM trades"
+    const offset = "SELECT symbol ".length
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toEqual([])
+    // Should suggest FROM and other keywords
+    const kws = suggestions.map((s) => s.label)
+    expect(kws).toContain("FROM")
+  })
+
+  it("should suggest columns after comma in select list", () => {
+    const sql = "SELECT symbol, FROM trades"
+    const offset = "SELECT symbol, ".length
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toContain("symbol")
+    expect(cols).toContain("price")
+  })
+
+  it("should suggest columns inside CTE body from inner FROM table", () => {
+    const sql =
+      "WITH cte AS (SELECT  FROM trades) SELECT * FROM cte"
+    const offset = sql.indexOf("SELECT  FROM") + "SELECT ".length
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    // Should see trades columns, not CTE self-reference
+    expect(cols).toContain("symbol")
+    expect(cols).toContain("price")
+  })
+
+  it("should NOT suggest columns after RParen (alias/keyword position)", () => {
+    const sql = "SELECT count(*) FROM trades"
+    const offset = "SELECT count(*) ".length
+    const suggestions = provider.getSuggestions(sql, offset)
+    const cols = suggestions
+      .filter((s) => s.kind === SuggestionKind.Column)
+      .map((s) => s.label)
+    expect(cols).toEqual([])
+    const kws = suggestions.map((s) => s.label)
+    expect(kws).toContain("FROM")
+  })
+})

@@ -62,6 +62,8 @@ export interface ContentAssistResult {
   nextTokenTypes: TokenType[]
   /** Tables/aliases found in the query (for column suggestions) */
   tablesInScope: TableRef[]
+  /** Columns from CTEs, keyed by CTE name (lowercase) */
+  cteColumns: Record<string, { name: string; type: string }[]>
   /** The tokens before the cursor */
   tokensBefore: IToken[]
   /** Whether the cursor is in the middle of a word (partial token being typed) */
@@ -94,8 +96,62 @@ function normalizeTableName(value: unknown): string | undefined {
   return undefined
 }
 
-function extractTablesFromAst(ast: unknown): TableRef[] {
+interface ExtractResult {
+  tables: TableRef[]
+  cteColumns: Record<string, { name: string; type: string }[]>
+}
+
+/**
+ * Infer column names from a CTE's inner SELECT columns.
+ * Uses alias if present, otherwise derives name from expression.
+ */
+function extractCteColumnNames(
+  columns: unknown[],
+): { name: string; type: string }[] {
+  const result: { name: string; type: string }[] = []
+  for (const col of columns) {
+    if (!col || typeof col !== "object") continue
+    const c = col as Record<string, unknown>
+
+    // StarSelectItem or QualifiedStarSelectItem — can't resolve without schema
+    if (c.type === "star" || c.type === "qualifiedStar") continue
+
+    // ExpressionSelectItem
+    if (c.type === "selectItem") {
+      // Prefer alias
+      if (typeof c.alias === "string") {
+        result.push({ name: c.alias, type: "" })
+        continue
+      }
+
+      const expr = c.expression as Record<string, unknown> | undefined
+      if (!expr) continue
+
+      // Column reference → use last part of qualified name
+      if (expr.type === "column" && expr.name) {
+        const qn = expr.name as Record<string, unknown>
+        if (Array.isArray(qn.parts) && qn.parts.length > 0) {
+          result.push({
+            name: qn.parts[qn.parts.length - 1] as string,
+            type: "",
+          })
+          continue
+        }
+      }
+
+      // Function call → use function name
+      if (expr.type === "function" && typeof expr.name === "string") {
+        result.push({ name: expr.name, type: "" })
+        continue
+      }
+    }
+  }
+  return result
+}
+
+function extractTablesFromAst(ast: unknown): ExtractResult {
   const tables: TableRef[] = []
+  const cteColumns: Record<string, { name: string; type: string }[]> = {}
   const visited = new WeakSet()
 
   function visit(node: unknown) {
@@ -104,6 +160,23 @@ function extractTablesFromAst(ast: unknown): TableRef[] {
     visited.add(node)
 
     const n = node as Record<string, unknown>
+
+    // Handle CTE definitions — surface CTE names as virtual tables
+    // and extract column names from the inner SELECT
+    if (n.type === "cte" && typeof n.name === "string") {
+      tables.push({ table: n.name })
+      const query = n.query as Record<string, unknown> | undefined
+      if (query && Array.isArray(query.columns)) {
+        const cols = extractCteColumnNames(query.columns)
+        cteColumns[n.name.toLowerCase()] = cols
+      } else {
+        // Register CTE name even if no columns are extractable (e.g., SELECT *)
+        cteColumns[n.name.toLowerCase()] = []
+      }
+      // Don't recurse into the CTE's inner query — its tables are not
+      // in the outer scope. We already extracted the CTE name and columns.
+      return
+    }
 
     // Handle table references in FROM clause
     if (n.type === "tableRef") {
@@ -181,14 +254,196 @@ function extractTablesFromAst(ast: unknown): TableRef[] {
     visit(ast)
   }
 
-  return tables
+  return { tables, cteColumns }
+}
+
+/**
+ * Extract CTE column information from the token stream by finding CTE
+ * boundaries and parsing each inner SELECT independently.
+ *
+ * This is used when the full SQL fails to parse (incomplete outer query)
+ * but the CTE definitions themselves are complete.
+ */
+interface CteTokenExtractResult {
+  cteNames: string[]
+  cteColumns: Record<string, { name: string; type: string }[]>
+  /** Token index where the CTE block ends (first token of the outer query) */
+  outerQueryStart: number
+}
+
+/**
+ * Extract CTE names and column information from the token stream by finding
+ * CTE boundaries and parsing each inner SELECT independently.
+ *
+ * This is used when the full SQL fails to parse (incomplete outer query)
+ * but the CTE definitions themselves are complete.
+ */
+function extractCtesFromTokens(
+  fullSql: string,
+  tokens: IToken[],
+): CteTokenExtractResult {
+  const cteNames: string[] = []
+  const cteColumns: Record<string, { name: string; type: string }[]> = {}
+  if (tokens.length === 0 || tokens[0].tokenType.name !== "With")
+    return { cteNames, cteColumns, outerQueryStart: 0 }
+
+  const isIdent = (t: IToken | undefined): boolean =>
+    !!t &&
+    (t.tokenType.name === "Identifier" ||
+      t.tokenType.name === "QuotedIdentifier" ||
+      IDENTIFIER_KEYWORD_TOKENS.has(t.tokenType.name))
+
+  let i = 1 // skip WITH
+  while (i < tokens.length) {
+    // Expect: cteName AS (
+    if (!isIdent(tokens[i])) break
+    const cteName = tokens[i].image
+    i++
+    if (tokens[i]?.tokenType.name !== "As") break
+    i++
+    if (tokens[i]?.tokenType.name !== "LParen") break
+    const innerStart = i + 1
+    i++
+
+    // Find matching RParen
+    let depth = 1
+    while (i < tokens.length && depth > 0) {
+      if (tokens[i].tokenType.name === "LParen") depth++
+      if (tokens[i].tokenType.name === "RParen") depth--
+      i++
+    }
+
+    // Always register the CTE name, even if we can't extract columns
+    cteNames.push(cteName)
+    // Initialize with empty array; will be populated below if columns are found
+    cteColumns[cteName.toLowerCase()] = []
+
+    if (depth === 0) {
+      // tokens[innerStart..i-2] is the inner SELECT body
+      const innerEnd = i - 1 // RParen index
+      if (innerStart < innerEnd) {
+        const innerSql = fullSql.substring(
+          tokens[innerStart].startOffset,
+          tokens[innerEnd - 1].startOffset + tokens[innerEnd - 1].image.length,
+        )
+        try {
+          const { cst } = parseRaw(innerSql)
+          const ast = visitor.visit(cst) as Statement[]
+          if (ast && ast.length > 0) {
+            const stmt = ast[0] as unknown as Record<string, unknown>
+            if (Array.isArray(stmt.columns)) {
+              const cols = extractCteColumnNames(stmt.columns)
+              if (cols.length > 0) {
+                cteColumns[cteName.toLowerCase()] = cols
+              }
+            }
+          }
+        } catch {
+          // Inner SELECT parse failed, skip this CTE's columns
+        }
+      }
+    } else {
+      // Unclosed paren — CTE body is incomplete, can't extract columns
+      break
+    }
+
+    // After RParen, expect Comma (another CTE) or SELECT/INSERT/UPDATE
+    if (tokens[i]?.tokenType.name === "Comma") {
+      i++ // next CTE
+      continue
+    }
+    break
+  }
+
+  return { cteNames, cteColumns, outerQueryStart: i }
+}
+
+// =============================================================================
+// CTE cursor detection
+// =============================================================================
+
+interface CteBodyContext {
+  /** Name of the CTE containing the cursor (unquoted) */
+  name: string
+  /** Token index of the first token inside the CTE body (after LParen) */
+  bodyTokenStart: number
+  /** Token index of the RParen (or tokens.length if unclosed) */
+  bodyTokenEnd: number
+}
+
+/**
+ * Detect whether the cursor is inside a CTE body. Returns the CTE name and
+ * body token range so callers can exclude self-references and extract inner
+ * table references.
+ */
+function findCteContainingCursor(
+  tokens: IToken[],
+  cursorOffset: number,
+): CteBodyContext | null {
+  if (tokens.length === 0 || tokens[0].tokenType.name !== "With") return null
+
+  const isIdent = (t: IToken | undefined): boolean =>
+    !!t &&
+    (t.tokenType.name === "Identifier" ||
+      t.tokenType.name === "QuotedIdentifier" ||
+      IDENTIFIER_KEYWORD_TOKENS.has(t.tokenType.name))
+
+  let i = 1 // skip WITH
+  while (i < tokens.length) {
+    if (!isIdent(tokens[i])) break
+    const rawName = tokens[i].image
+    const cteName =
+      tokens[i].tokenType.name === "QuotedIdentifier"
+        ? rawName.slice(1, -1)
+        : rawName
+    i++
+    if (tokens[i]?.tokenType.name !== "As") break
+    i++
+    if (tokens[i]?.tokenType.name !== "LParen") break
+    const lparenOffset = tokens[i].startOffset
+    i++
+    const bodyTokenStart = i
+
+    // Find matching RParen
+    let depth = 1
+    while (i < tokens.length && depth > 0) {
+      if (tokens[i].tokenType.name === "LParen") depth++
+      if (tokens[i].tokenType.name === "RParen") depth--
+      i++
+    }
+
+    if (depth === 0) {
+      // i is past RParen; tokens[i-1] is RParen
+      const rparenIdx = i - 1
+      const rparenEndOffset =
+        tokens[rparenIdx].startOffset + tokens[rparenIdx].image.length
+      if (cursorOffset > lparenOffset && cursorOffset < rparenEndOffset) {
+        return { name: cteName, bodyTokenStart, bodyTokenEnd: rparenIdx }
+      }
+    } else {
+      // Unclosed paren — if cursor is after LParen, it's inside this CTE
+      if (cursorOffset > lparenOffset) {
+        return { name: cteName, bodyTokenStart, bodyTokenEnd: tokens.length }
+      }
+      break
+    }
+
+    // After RParen, expect Comma or end of CTEs
+    if (tokens[i]?.tokenType.name === "Comma") {
+      i++
+      continue
+    }
+    break
+  }
+
+  return null
 }
 
 /**
  * Try to extract tables by parsing the query.
  * If parsing fails, try to extract from tokens.
  */
-function extractTables(fullSql: string, tokens: IToken[]): TableRef[] {
+function extractTables(fullSql: string, tokens: IToken[]): ExtractResult {
   // First, try to parse and extract from AST
   try {
     const { cst } = parseRaw(fullSql)
@@ -240,7 +495,17 @@ function extractTables(fullSql: string, tokens: IToken[]): TableRef[] {
     return { name: parts[parts.length - 1], nextIndex: i }
   }
 
-  for (let i = 0; i < tokens.length; i++) {
+  // Extract CTE names and columns from the token stream. CTE definitions are
+  // usually complete even when the outer query is incomplete, so parse each
+  // inner SELECT independently.
+  const { cteNames, cteColumns, outerQueryStart } = extractCtesFromTokens(
+    fullSql,
+    tokens,
+  )
+
+  // Scan for FROM/JOIN table references only in the outer query (after CTEs).
+  // This avoids leaking tables referenced inside CTE bodies into the outer scope.
+  for (let i = outerQueryStart; i < tokens.length; i++) {
     if (!TABLE_PREFIX_TOKENS.has(tokens[i].tokenType.name)) continue
 
     const tableNameResult = readQualifiedName(i + 1)
@@ -263,8 +528,11 @@ function extractTables(fullSql: string, tokens: IToken[]): TableRef[] {
     // Continue from where we consumed table/alias to avoid duplicate captures.
     i = alias ? aliasStart : tableNameResult.nextIndex - 1
   }
+  for (const name of cteNames) {
+    tables.push({ table: name })
+  }
 
-  return tables
+  return { tables, cteColumns }
 }
 
 // =============================================================================
@@ -460,6 +728,7 @@ export function getContentAssist(
       return {
         nextTokenTypes: [],
         tablesInScope: [],
+        cteColumns: {},
         tokensBefore: [],
         isMidWord: true,
         lexErrors: [],
@@ -496,8 +765,53 @@ export function getContentAssist(
     // This can happen with malformed input
   }
 
-  // Extract tables from the full query (reuses fullTokens from above)
-  const tablesInScope = extractTables(fullSql, fullTokens)
+  // Extract tables and CTE columns from the full query (reuses fullTokens from above)
+  const { tables: tablesInScope, cteColumns } = extractTables(
+    fullSql,
+    fullTokens,
+  )
+
+  // If cursor is inside a CTE body, exclude the CTE itself from scope
+  // to prevent self-reference (e.g., "WITH x AS (SELECT |)" shouldn't
+  // suggest x's own columns). Also extract tables from the CTE body so
+  // columns from the inner FROM/JOIN are available.
+  const cursorCte = findCteContainingCursor(fullTokens, cursorOffset)
+  if (cursorCte) {
+    const cteNameLower = cursorCte.name.toLowerCase()
+    // Remove self-reference from tablesInScope
+    for (let j = tablesInScope.length - 1; j >= 0; j--) {
+      if (tablesInScope[j].table.toLowerCase() === cteNameLower) {
+        tablesInScope.splice(j, 1)
+      }
+    }
+    // Remove self-reference from cteColumns
+    delete cteColumns[cteNameLower]
+
+    // Extract tables from the CTE body tokens so inner FROM/JOIN tables
+    // are available for column scoping.
+    const BODY_TABLE_PREFIXES = new Set(["From", "Join", "Update", "Into"])
+    const seen = new Set(tablesInScope.map((t) => t.table.toLowerCase()))
+    for (let j = cursorCte.bodyTokenStart; j < cursorCte.bodyTokenEnd; j++) {
+      if (!BODY_TABLE_PREFIXES.has(fullTokens[j].tokenType.name)) continue
+      const next = fullTokens[j + 1]
+      if (
+        next &&
+        (next.tokenType.name === "Identifier" ||
+          next.tokenType.name === "QuotedIdentifier" ||
+          IDENTIFIER_KEYWORD_TOKENS.has(next.tokenType.name))
+      ) {
+        const tableName =
+          next.tokenType.name === "QuotedIdentifier"
+            ? next.image.slice(1, -1)
+            : next.image
+        const lower = tableName.toLowerCase()
+        if (!seen.has(lower)) {
+          seen.add(lower)
+          tablesInScope.push({ table: tableName })
+        }
+      }
+    }
+  }
 
   if (tablesInScope.length === 0) {
     const inferred = inferTableFromQualifiedRef(tokens, isMidWord)
@@ -507,6 +821,7 @@ export function getContentAssist(
   return {
     nextTokenTypes,
     tablesInScope,
+    cteColumns,
     tokensBefore: tokens,
     isMidWord,
     lexErrors: lexResult.errors,

@@ -210,6 +210,112 @@ describe("Content Assist", () => {
       expect(tokens).toContain("Identifier")
     })
 
+    it("should include CTE name in tablesInScope", () => {
+      const sql = "WITH cte AS (SELECT 1) SELECT * FROM "
+      const result = getContentAssist(sql, sql.length)
+      const tableNames = result.tablesInScope.map((t) => t.table)
+      expect(tableNames).toContain("cte")
+    })
+
+    it("should include multiple CTE names in tablesInScope", () => {
+      const sql = "WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM "
+      const result = getContentAssist(sql, sql.length)
+      const tableNames = result.tablesInScope.map((t) => t.table)
+      expect(tableNames).toContain("a")
+      expect(tableNames).toContain("b")
+    })
+
+    it("should extract CTE columns from inner SELECT with aliases", () => {
+      const sql =
+        "WITH cte AS (SELECT symbol AS sym, price AS p FROM trades) SELECT  FROM cte"
+      const result = getContentAssist(sql, sql.indexOf(" FROM cte"))
+      expect(result.cteColumns["cte"]).toBeDefined()
+      const colNames = result.cteColumns["cte"].map((c) => c.name)
+      expect(colNames).toContain("sym")
+      expect(colNames).toContain("p")
+    })
+
+    it("should extract CTE columns from bare column references", () => {
+      const sql =
+        "WITH cte AS (SELECT symbol, price FROM trades) SELECT  FROM cte"
+      const result = getContentAssist(sql, sql.indexOf(" FROM cte"))
+      expect(result.cteColumns["cte"]).toBeDefined()
+      const colNames = result.cteColumns["cte"].map((c) => c.name)
+      expect(colNames).toContain("symbol")
+      expect(colNames).toContain("price")
+    })
+
+    it("should extract CTE columns from function calls", () => {
+      const sql =
+        "WITH cte AS (SELECT count(*), avg(price) FROM trades) SELECT  FROM cte"
+      const result = getContentAssist(sql, sql.indexOf(" FROM cte"))
+      expect(result.cteColumns["cte"]).toBeDefined()
+      const colNames = result.cteColumns["cte"].map((c) => c.name)
+      expect(colNames).toContain("count")
+      expect(colNames).toContain("avg")
+    })
+
+    it("should extract columns from multiple CTEs", () => {
+      const sql =
+        "WITH a AS (SELECT symbol FROM trades), b AS (SELECT id FROM orders) SELECT  FROM a"
+      const result = getContentAssist(sql, sql.indexOf(" FROM a"))
+      expect(result.cteColumns["a"]).toBeDefined()
+      expect(result.cteColumns["b"]).toBeDefined()
+      expect(result.cteColumns["a"].map((c) => c.name)).toContain("symbol")
+      expect(result.cteColumns["b"].map((c) => c.name)).toContain("id")
+    })
+
+    it("should extract CTE columns from complex window function aliases (Bollinger Bands)", () => {
+      const sql =
+        "WITH OHLC AS (SELECT timestamp, symbol, first(price) AS open, max(price) AS high, min(price) AS low, last(price) AS close, sum(amount) AS volume FROM trades SAMPLE BY 15m) SELECT  FROM OHLC"
+      const result = getContentAssist(sql, sql.indexOf(" FROM OHLC"))
+      expect(result.cteColumns["ohlc"]).toBeDefined()
+      const colNames = result.cteColumns["ohlc"].map((c) => c.name)
+      expect(colNames).toContain("timestamp")
+      expect(colNames).toContain("symbol")
+      expect(colNames).toContain("open")
+      expect(colNames).toContain("high")
+      expect(colNames).toContain("low")
+      expect(colNames).toContain("close")
+      expect(colNames).toContain("volume")
+    })
+
+    it("should extract CTE columns with rank() window function alias", () => {
+      const sql =
+        "WITH totals AS (SELECT symbol, count() AS total FROM trades), ranked AS (SELECT symbol, total, rank() OVER (ORDER BY total DESC) AS ranking FROM totals) SELECT  FROM ranked"
+      const result = getContentAssist(sql, sql.indexOf(" FROM ranked"))
+      expect(result.cteColumns["ranked"]).toBeDefined()
+      const colNames = result.cteColumns["ranked"].map((c) => c.name)
+      expect(colNames).toContain("symbol")
+      expect(colNames).toContain("total")
+      expect(colNames).toContain("ranking")
+    })
+
+    it("should extract CTE columns when CTE name shadows a schema table", () => {
+      const sql =
+        "WITH trades AS (SELECT 1 AS custom_col) SELECT  FROM trades"
+      const result = getContentAssist(sql, sql.indexOf(" FROM trades"))
+      expect(result.cteColumns["trades"]).toBeDefined()
+      expect(result.cteColumns["trades"].map((c) => c.name)).toContain(
+        "custom_col",
+      )
+    })
+
+    it("should handle CTE with literal-only select without crashing", () => {
+      const sql = "WITH cte AS (SELECT 1, 'hello') SELECT  FROM cte"
+      const result = getContentAssist(sql, sql.indexOf(" FROM cte"))
+      expect(result.tablesInScope.map((t) => t.table)).toContain("cte")
+    })
+
+    it("should not leak inner CTE source tables into outer tablesInScope", () => {
+      const sql =
+        "WITH cte AS (SELECT symbol AS sym FROM trades) SELECT  FROM cte"
+      const result = getContentAssist(sql, sql.indexOf(" FROM cte"))
+      const tableNames = result.tablesInScope.map((t) => t.table)
+      expect(tableNames).toContain("cte")
+      expect(tableNames).not.toContain("trades")
+    })
+
     // Fix 16: qualifiedStar autocomplete
     it("should suggest Comma after qualified column in select list", () => {
       const tokens = getNextValidTokens("SELECT t.col ")

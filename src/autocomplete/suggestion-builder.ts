@@ -208,6 +208,23 @@ export function buildSuggestions(
           priority: SuggestionPriority.MediumLow,
         })
       }
+
+      // Add tables from query scope (CTEs, etc.) that aren't in the schema
+      const seenTableNames = new Set(
+        schema.tables.map((t) => t.name.toLowerCase()),
+      )
+      for (const ref of tablesInScope) {
+        const lower = ref.table.toLowerCase()
+        if (!seenTableNames.has(lower)) {
+          seenTableNames.add(lower)
+          suggestions.push({
+            label: ref.table,
+            kind: SuggestionKind.Table,
+            insertText: ref.table,
+            priority: SuggestionPriority.MediumLow,
+          })
+        }
+      }
     }
   }
 

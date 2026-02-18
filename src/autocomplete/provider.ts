@@ -21,7 +21,10 @@
 import type { IToken } from "chevrotain"
 import { getContentAssist } from "./content-assist"
 import { buildSuggestions } from "./suggestion-builder"
-import { shouldSkipToken } from "./token-classification"
+import {
+  shouldSkipToken,
+  IDENTIFIER_KEYWORD_TOKENS,
+} from "./token-classification"
 import type { AutocompleteProvider, SchemaInfo, Suggestion } from "./types"
 import { SuggestionKind, SuggestionPriority } from "./types"
 
@@ -51,13 +54,52 @@ function getLastSignificantTokens(tokens: IToken[]): string[] {
   }
   return result
 }
+/**
+ * Tokens that signal the end of an expression / value. When these appear as
+ * the raw last token before the cursor, the cursor is in alias or keyword
+ * position — NOT column position. e.g., "SELECT symbol |" → alias position.
+ */
+const EXPRESSION_END_TOKENS = new Set([
+  "Identifier",
+  "QuotedIdentifier",
+  "RParen",
+  "NumberLiteral",
+  "LongLiteral",
+  "DecimalLiteral",
+  "StringLiteral",
+])
+
+function isExpressionEnd(tokenName: string): boolean {
+  return (
+    EXPRESSION_END_TOKENS.has(tokenName) ||
+    IDENTIFIER_KEYWORD_TOKENS.has(tokenName)
+  )
+}
+
 function getIdentifierSuggestionScope(
   lastTokenName?: string,
   prevTokenName?: string,
+  rawLastTokenName?: string,
 ): {
   includeColumns: boolean
   includeTables: boolean
 } {
+  // Expression-end tokens indicate alias / post-expression position.
+  // e.g., "SELECT symbol |" or "FROM trades |" — no columns expected.
+  if (rawLastTokenName && isExpressionEnd(rawLastTokenName)) {
+    return { includeColumns: false, includeTables: false }
+  }
+
+  // After AS keyword: either subquery start (WITH name AS (|) or alias (SELECT x AS |).
+  if (lastTokenName === "As") {
+    // "WITH name AS (|" → LParen is raw last → subquery start, suggest tables
+    if (rawLastTokenName === "LParen") {
+      return { includeColumns: false, includeTables: true }
+    }
+    // "SELECT x AS |" → alias position
+    return { includeColumns: false, includeTables: false }
+  }
+
   if (prevTokenName && TABLE_NAME_TOKENS.has(prevTokenName)) {
     return { includeColumns: false, includeTables: true }
   }
@@ -108,8 +150,22 @@ export function createAutocompleteProvider(
   return {
     getSuggestions(query: string, cursorOffset: number): Suggestion[] {
       // Get content assist from parser
-      const { nextTokenTypes, tablesInScope, tokensBefore, isMidWord } =
-        getContentAssist(query, cursorOffset)
+      const {
+        nextTokenTypes,
+        tablesInScope,
+        cteColumns,
+        tokensBefore,
+        isMidWord,
+      } = getContentAssist(query, cursorOffset)
+
+      // Merge CTE columns into the schema so getColumnsInScope() can find them
+      const effectiveSchema =
+        Object.keys(cteColumns).length > 0
+          ? {
+              ...normalizedSchema,
+              columns: { ...normalizedSchema.columns, ...cteColumns },
+            }
+          : normalizedSchema
 
       // If parser returned valid next tokens, use them
       if (nextTokenTypes.length > 0) {
@@ -121,10 +177,18 @@ export function createAutocompleteProvider(
             : tokensBefore
         const [lastTokenName, prevTokenName] =
           getLastSignificantTokens(tokensForScope)
-        const scope = getIdentifierSuggestionScope(lastTokenName, prevTokenName)
+        const rawLastTokenName =
+          tokensForScope.length > 0
+            ? tokensForScope[tokensForScope.length - 1]?.tokenType?.name
+            : undefined
+        const scope = getIdentifierSuggestionScope(
+          lastTokenName,
+          prevTokenName,
+          rawLastTokenName,
+        )
         return buildSuggestions(
           nextTokenTypes,
-          normalizedSchema,
+          effectiveSchema,
           tablesInScope,
           { ...scope, isMidWord },
         )
@@ -140,13 +204,31 @@ export function createAutocompleteProvider(
       const [lastFallback] = getLastSignificantTokens(fallbackTokens)
       if (lastFallback && TABLE_NAME_TOKENS.has(lastFallback)) {
         const suggestions: Suggestion[] = []
-        for (const table of normalizedSchema.tables) {
+        const seen = new Set<string>()
+        for (const table of effectiveSchema.tables) {
+          seen.add(table.name.toLowerCase())
           suggestions.push({
             label: table.name,
             kind: SuggestionKind.Table,
             insertText: table.name,
             priority: SuggestionPriority.MediumLow,
           })
+        }
+        // Include CTE names not in the schema. Only add tablesInScope
+        // entries that are known CTE names to avoid re-suggesting partial
+        // table names from the token-extracted FROM/JOIN references.
+        const cteNameSet = new Set(Object.keys(cteColumns))
+        for (const ref of tablesInScope) {
+          const lower = ref.table.toLowerCase()
+          if (cteNameSet.has(lower) && !seen.has(lower)) {
+            seen.add(lower)
+            suggestions.push({
+              label: ref.table,
+              kind: SuggestionKind.Table,
+              insertText: ref.table,
+              priority: SuggestionPriority.MediumLow,
+            })
+          }
         }
         return suggestions
       }
