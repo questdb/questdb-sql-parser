@@ -5814,4 +5814,46 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(result.errors).toHaveLength(0)
     })
   })
+
+  describe("'horizon' and 'step' as non-reserved identifier keywords", () => {
+    it("should parse 'horizon' as a table name", () => {
+      const result = parseToAst("SELECT * FROM horizon")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      const tableRef = stmt.from?.[0] as AST.TableRef
+      expect((tableRef.table as AST.QualifiedName).parts).toEqual(["horizon"])
+    })
+
+    it("should parse 'step' as a column name", () => {
+      const result = parseToAst("SELECT step FROM trades")
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse 'horizon' as a column name", () => {
+      const result = parseToAst("SELECT horizon FROM trades")
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse 'step' as a table name", () => {
+      const result = parseToAst("SELECT * FROM step")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      const tableRef = stmt.from?.[0] as AST.TableRef
+      expect((tableRef.table as AST.QualifiedName).parts).toEqual(["step"])
+    })
+
+    it("should round-trip 'horizon' through toSql", () => {
+      const sql = "SELECT * FROM horizon"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      expect(toSql(result.ast[0])).toBe(sql)
+    })
+
+    it("should round-trip 'step' through toSql", () => {
+      const sql = "SELECT step FROM trades"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      expect(toSql(result.ast[0])).toBe(sql)
+    })
+  })
 })

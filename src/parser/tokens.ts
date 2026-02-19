@@ -336,6 +336,8 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Every",
   "Prev",
   "Linear",
+  "Horizon",
+  "Step",
 ])
 
 for (const name of IDENTIFIER_KEYWORD_NAMES) {
