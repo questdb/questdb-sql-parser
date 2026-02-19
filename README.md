@@ -1,6 +1,6 @@
 # @questdb/sql-parser
 
-A production-ready SQL parser for [QuestDB](https://questdb.io/) syntax, built with [Chevrotain](https://chevrotain.io/). Parses SQL into a fully typed AST, converts AST back to SQL, and provides context-aware autocomplete — all in a single package.
+An SQL parser for [QuestDB](https://questdb.io/) syntax, built with [Chevrotain](https://chevrotain.io/). Parses SQL into a fully typed AST, converts AST back to SQL, and provides context-aware autocomplete — all in a single package.
 
 ## Features
 
