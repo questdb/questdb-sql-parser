@@ -3201,16 +3201,26 @@ class QuestDBParser extends CstParser {
     this.OR([
       {
         ALT: () => {
-          this.SUBRULE1(this.expression)
+          this.SUBRULE1(this.pivotInValue)
           this.MANY(() => {
             this.CONSUME(Comma)
-            this.SUBRULE2(this.expression)
+            this.SUBRULE2(this.pivotInValue)
           })
         },
       },
       { ALT: () => this.SUBRULE(this.selectStatement) },
     ])
     this.CONSUME(RParen)
+  })
+
+  // A single value inside PIVOT FOR ... IN (...), optionally aliased:
+  //   'BTC-USD' AS bitcoin
+  private pivotInValue = this.RULE("pivotInValue", () => {
+    this.SUBRULE(this.expression)
+    this.OPTION(() => {
+      this.CONSUME(As)
+      this.SUBRULE(this.identifier)
+    })
   })
 
   // ==========================================================================

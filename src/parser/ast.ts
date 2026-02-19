@@ -777,9 +777,15 @@ export interface PivotForClause extends AstNode {
   in: PivotInSource
 }
 
+export interface PivotInValue extends AstNode {
+  type: "pivotInValue"
+  expression: Expression
+  alias?: string
+}
+
 export interface PivotInSource extends AstNode {
   type: "pivotIn"
-  values?: Expression[]
+  values?: PivotInValue[]
   select?: SelectStatement
 }
 

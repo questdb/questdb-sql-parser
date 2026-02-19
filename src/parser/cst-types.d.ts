@@ -1769,10 +1769,21 @@ export type PivotForClauseCstChildren = {
   columnRef: ColumnRefCstNode[];
   In: IToken[];
   LParen: IToken[];
-  expression?: (ExpressionCstNode)[];
+  pivotInValue?: (PivotInValueCstNode)[];
   Comma?: IToken[];
   selectStatement?: SelectStatementCstNode[];
   RParen: IToken[];
+};
+
+export interface PivotInValueCstNode extends CstNode {
+  name: "pivotInValue";
+  children: PivotInValueCstChildren;
+}
+
+export type PivotInValueCstChildren = {
+  expression: ExpressionCstNode[];
+  As?: IToken[];
+  identifier?: IdentifierCstNode[];
 };
 
 export interface ExpressionCstNode extends CstNode {
@@ -2428,6 +2439,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   pivotBody(children: PivotBodyCstChildren, param?: IN): OUT;
   pivotAggregation(children: PivotAggregationCstChildren, param?: IN): OUT;
   pivotForClause(children: PivotForClauseCstChildren, param?: IN): OUT;
+  pivotInValue(children: PivotInValueCstChildren, param?: IN): OUT;
   expression(children: ExpressionCstChildren, param?: IN): OUT;
   orExpression(children: OrExpressionCstChildren, param?: IN): OUT;
   andExpression(children: AndExpressionCstChildren, param?: IN): OUT;

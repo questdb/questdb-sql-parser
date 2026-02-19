@@ -1346,7 +1346,15 @@ function pivotClauseToSql(pivot: AST.PivotClause): string {
     if (p.in.select) {
       forSql += selectToSql(p.in.select)
     } else if (p.in.values) {
-      forSql += p.in.values.map(expressionToSql).join(", ")
+      forSql += p.in.values
+        .map((v) => {
+          let sql = expressionToSql(v.expression)
+          if (v.alias) {
+            sql += ` AS ${escapeIdentifier(v.alias)}`
+          }
+          return sql
+        })
+        .join(", ")
     }
     forSql += ")"
     pivotParts.push(forSql)
@@ -1398,7 +1406,15 @@ function pivotToSql(stmt: AST.PivotStatement): string {
     if (pivot.in.select) {
       forSql += selectToSql(pivot.in.select)
     } else if (pivot.in.values) {
-      forSql += pivot.in.values.map(expressionToSql).join(", ")
+      forSql += pivot.in.values
+        .map((v) => {
+          let sql = expressionToSql(v.expression)
+          if (v.alias) {
+            sql += ` AS ${escapeIdentifier(v.alias)}`
+          }
+          return sql
+        })
+        .join(", ")
     }
     forSql += ")"
     pivotParts.push(forSql)

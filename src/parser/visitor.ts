@@ -113,6 +113,7 @@ import type {
   PivotAggregationCstChildren,
   PivotBodyCstChildren,
   PivotForClauseCstChildren,
+  PivotInValueCstChildren,
   PivotStatementCstChildren,
   PrimaryExpressionCstChildren,
   QualifiedNameCstChildren,
@@ -2343,6 +2344,7 @@ class QuestDBVisitor extends BaseVisitor {
 
     let key = keyToken?.image ?? "OPTION"
     if (ctx.On && ctx.Error) key = "ON ERROR"
+    else if (ctx.Partition && ctx.By) key = "PARTITION BY"
     const result: AST.CopyOption = {
       type: "copyOption",
       key,
@@ -2775,10 +2777,21 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.selectStatement) {
       result.in.select = this.visit(ctx.selectStatement) as AST.SelectStatement
-    } else if (ctx.expression && ctx.expression.length > 0) {
-      result.in.values = ctx.expression.map(
-        (e: CstNode) => this.visit(e) as AST.Expression,
+    } else if (ctx.pivotInValue && ctx.pivotInValue.length > 0) {
+      result.in.values = ctx.pivotInValue.map(
+        (e: CstNode) => this.visit(e) as AST.PivotInValue,
       )
+    }
+    return result
+  }
+
+  pivotInValue(ctx: PivotInValueCstChildren): AST.PivotInValue {
+    const result: AST.PivotInValue = {
+      type: "pivotInValue",
+      expression: this.visit(ctx.expression) as AST.Expression,
+    }
+    if (ctx.As && ctx.identifier) {
+      result.alias = this.extractIdentifierName(ctx.identifier[0].children)
     }
     return result
   }

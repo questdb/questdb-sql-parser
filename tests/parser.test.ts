@@ -2125,6 +2125,37 @@ describe("QuestDB Parser", () => {
         expect(pivot.groupBy).toHaveLength(1)
       }
     })
+
+    it("should parse PIVOT FOR...IN with AS aliases on values", () => {
+      const result = parseToAst(
+        "trades PIVOT (avg(price) FOR symbol IN ('BTC-USD' AS bitcoin, 'ETH-USD' AS ethereum))",
+      )
+      expect(result.errors).toHaveLength(0)
+      expect(result.ast).toHaveLength(1)
+      const pivot = result.ast[0]
+      expect(pivot.type).toBe("pivot")
+      if (pivot.type === "pivot") {
+        expect(pivot.pivots).toHaveLength(1)
+        const values = pivot.pivots[0].in.values!
+        expect(values).toHaveLength(2)
+        expect(values[0].alias).toBe("bitcoin")
+        expect(values[1].alias).toBe("ethereum")
+      }
+    })
+
+    it("should parse PIVOT FOR...IN with mixed aliased and unaliased values", () => {
+      const result = parseToAst(
+        "trades PIVOT (avg(price) FOR symbol IN ('BTC-USD' AS bitcoin, 'ETH-USD'))",
+      )
+      expect(result.errors).toHaveLength(0)
+      const pivot = result.ast[0]
+      if (pivot.type === "pivot") {
+        const values = pivot.pivots[0].in.values!
+        expect(values).toHaveLength(2)
+        expect(values[0].alias).toBe("bitcoin")
+        expect(values[1].alias).toBeUndefined()
+      }
+    })
   })
 
   describe("PIVOT multi-statement boundary", () => {
@@ -2168,6 +2199,8 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       "(SELECT * FROM trades) PIVOT (sum(amount) FOR category IN ('food', 'drinks'))",
       "trades WHERE price > 100 PIVOT (sum(amount) FOR category IN ('food', 'drinks'))",
       "trades PIVOT (sum(amount) FOR category IN ('food', 'drinks')) AS p",
+      "trades PIVOT (avg(price) FOR symbol IN ('BTC-USD' AS bitcoin, 'ETH-USD' AS ethereum))",
+      "trades PIVOT (avg(price) FOR symbol IN ('BTC-USD' AS bitcoin, 'ETH-USD'))",
     ]
 
     for (const query of queries) {
@@ -4743,6 +4776,14 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       )
       expect(result.errors).toHaveLength(0)
       expect(result.ast[0].type).toBe("copyFrom")
+    })
+
+    it("should round-trip COPY FROM with PARTITION BY", () => {
+      const sql = "COPY weather FROM '/tmp/weather.csv' WITH PARTITION BY DAY"
+      const { ast, errors } = parseToAst(sql)
+      expect(errors).toHaveLength(0)
+      const output = toSql(ast)
+      expect(output).toContain("PARTITION BY DAY")
     })
 
     // BACKUP ABORT
