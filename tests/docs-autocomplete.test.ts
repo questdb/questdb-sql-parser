@@ -317,7 +317,7 @@ function autocompleteWalkthrough(
       .getSuggestions(prefix, prefix.length)
       .map((s) => s.label)
 
-    let found = false
+    let found: boolean
     let expectedLabel: string
 
     if (tokenType === "Identifier" || tokenType === "QuotedIdentifier") {

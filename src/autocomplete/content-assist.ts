@@ -738,8 +738,7 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
         const filteredExtra = extra.filter(
           (s) => !isImplicitStatementPath(s.ruleStack, IMPLICIT_RULES),
         )
-        const extraEffective =
-          filteredExtra.length > 0 ? filteredExtra : extra
+        const extraEffective = filteredExtra.length > 0 ? filteredExtra : extra
         const seen = new Set(result.map((t) => t.name))
         for (const s of extraEffective) {
           if (!seen.has(s.nextTokenType.name)) {

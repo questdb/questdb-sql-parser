@@ -3783,17 +3783,14 @@ class QuestDBVisitor extends BaseVisitor {
     return this.visit(ctx.qualifiedName) as AST.QualifiedName
   }
 
-  tableNameOrString(
-    ctx: TableNameOrStringCstChildren,
-  ): AST.QualifiedName {
+  tableNameOrString(ctx: TableNameOrStringCstChildren): AST.QualifiedName {
     if (ctx.StringLiteral) {
       return {
         type: "qualifiedName",
         parts: [ctx.StringLiteral[0].image.slice(1, -1)],
       }
     }
-    if (ctx.tableName)
-      return this.visit(ctx.tableName) as AST.QualifiedName
+    if (ctx.tableName) return this.visit(ctx.tableName) as AST.QualifiedName
     return { type: "qualifiedName", parts: [] }
   }
 
