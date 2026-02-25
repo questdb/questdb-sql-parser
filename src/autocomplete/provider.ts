@@ -38,6 +38,71 @@ const TABLE_NAME_TOKENS = new Set([
   "View",
 ])
 
+/**
+ * Pre-built index: lowercase table name → Set of lowercase column names.
+ * Built once at provider creation time so per-request ranking is O(N×M)
+ * rather than O(N×C).
+ */
+function buildColumnIndex(
+  schema: SchemaInfo,
+): Map<string, Set<string>> {
+  const index = new Map<string, Set<string>>()
+  for (const table of schema.tables) {
+    const key = table.name.toLowerCase()
+    const cols = schema.columns[key]
+    if (cols) {
+      index.set(key, new Set(cols.map((c) => c.name.toLowerCase())))
+    }
+  }
+  return index
+}
+
+/**
+ * Boost the priority of table suggestions based on how many of the referenced
+ * columns they contain:
+ *
+ *   - ALL referenced columns present  → SuggestionPriority.High   (full match)
+ *   - SOME referenced columns present → SuggestionPriority.Medium (partial match)
+ *   - No referenced columns           → priority unchanged          (no match)
+ *
+ * Graceful fallback: if no table has any referenced column at all, nothing is
+ * changed so the caller still sees all tables at their default priority.
+ *
+ * @param suggestions     - The suggestion array (mutated in place)
+ * @param referencedColumns - Lowercase column names found in expression context
+ * @param columnIndex     - Pre-built map of table → column name set
+ */
+function rankTableSuggestions(
+  suggestions: Suggestion[],
+  referencedColumns: Set<string>,
+  columnIndex: Map<string, Set<string>>,
+): void {
+  if (referencedColumns.size === 0) return
+
+  // Score each table: how many referenced columns does it contain?
+  const scores = new Map<string, number>()
+  for (const [tableName, colNames] of columnIndex) {
+    let count = 0
+    for (const ref of referencedColumns) {
+      if (colNames.has(ref)) count++
+    }
+    if (count > 0) scores.set(tableName, count)
+  }
+
+  // Graceful fallback: no table has any of the referenced columns
+  if (scores.size === 0) return
+
+  for (const s of suggestions) {
+    if (s.kind !== SuggestionKind.Table) continue
+    const score = scores.get(s.label.toLowerCase())
+    if (score === undefined) continue
+    s.priority =
+      score === referencedColumns.size
+        ? SuggestionPriority.High    // full match
+        : SuggestionPriority.Medium  // partial match
+  }
+}
+
 function getLastSignificantTokens(tokens: IToken[]): string[] {
   const result: string[] = []
   for (let i = tokens.length - 1; i >= 0; i--) {
@@ -84,6 +149,9 @@ export function createAutocompleteProvider(
     ),
   }
 
+  // Pre-build column index once so per-request ranking is fast
+  const columnIndex = buildColumnIndex(normalizedSchema)
+
   return {
     getSuggestions(query: string, cursorOffset: number): Suggestion[] {
       // Get content assist from parser
@@ -96,6 +164,7 @@ export function createAutocompleteProvider(
         qualifiedTableRef,
         suggestColumns,
         suggestTables,
+        referencedColumns,
       } = getContentAssist(query, cursorOffset)
 
       // Merge CTE columns into the schema so getColumnsInScope() can find them
@@ -146,7 +215,7 @@ export function createAutocompleteProvider(
 
       // If parser returned valid next tokens, use grammar-based classification
       if (nextTokenTypes.length > 0) {
-        return buildSuggestions(
+        const suggestions = buildSuggestions(
           nextTokenTypes,
           effectiveSchema,
           effectiveTablesInScope,
@@ -156,6 +225,10 @@ export function createAutocompleteProvider(
             isMidWord,
           },
         )
+        if (suggestTables) {
+          rankTableSuggestions(suggestions, referencedColumns, columnIndex)
+        }
+        return suggestions
       }
 
       // Fallback: when Chevrotain returns no suggestions (malformed SQL like
@@ -194,6 +267,7 @@ export function createAutocompleteProvider(
             })
           }
         }
+        rankTableSuggestions(suggestions, referencedColumns, columnIndex)
         return suggestions
       }
 

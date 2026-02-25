@@ -2902,4 +2902,127 @@ describe("CTE autocomplete", () => {
       expect(columns.map((s) => s.label)).toContain("symbol")
     })
   })
+
+  // ===========================================================================
+  // Column-based table ranking
+  // ===========================================================================
+  describe("column-based table ranking", () => {
+    it("boosts tables that contain all referenced columns", () => {
+      // "symbol" and "price" both exist in trades but not in orders or users
+      const sql = "SELECT symbol, price FROM "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const trades = tables.find((s) => s.label === "trades")
+      const orders = tables.find((s) => s.label === "orders")
+      const users = tables.find((s) => s.label === "users")
+      expect(trades?.priority).toBe(SuggestionPriority.High)
+      expect(orders?.priority).toBe(SuggestionPriority.MediumLow)
+      expect(users?.priority).toBe(SuggestionPriority.MediumLow)
+    })
+
+    it("partially matching tables get Medium priority; no-match tables stay MediumLow", () => {
+      // "symbol" is in trades; "id" is in orders — each table has one of the two
+      const sql = "SELECT symbol, id FROM "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const trades = tables.find((s) => s.label === "trades")
+      const orders = tables.find((s) => s.label === "orders")
+      const users = tables.find((s) => s.label === "users")
+      // partial match → Medium (boosted but not full match)
+      expect(trades?.priority).toBe(SuggestionPriority.Medium)
+      expect(orders?.priority).toBe(SuggestionPriority.Medium)
+      // no match → default
+      expect(users?.priority).toBe(SuggestionPriority.MediumLow)
+    })
+
+    it("columns from two tables: both partially-matching tables get Medium", () => {
+      // "symbol" and "price" only in trades; "status" only in orders; "name" only in users
+      // → trades and orders both partially match (2 and 1 out of 3); users has none
+      const sql = "SELECT symbol, price, status FROM "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const trades = tables.find((s) => s.label === "trades")
+      const orders = tables.find((s) => s.label === "orders")
+      const users = tables.find((s) => s.label === "users")
+      expect(trades?.priority).toBe(SuggestionPriority.Medium)
+      expect(orders?.priority).toBe(SuggestionPriority.Medium)
+      expect(users?.priority).toBe(SuggestionPriority.MediumLow)
+    })
+
+    it("graceful fallback: no boost when no table has any referenced column", () => {
+      // "nonexistent_col" doesn't exist in any table
+      const sql = "SELECT nonexistent_col FROM "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      for (const t of tables) {
+        expect(t.priority).toBe(SuggestionPriority.MediumLow)
+      }
+    })
+
+    it("qualified references: the alias/qualifier is excluded but the column name is used", () => {
+      // "t1.symbol" → "symbol" is extracted; "t1" (alias qualifier) is not
+      const sql = "SELECT t1.symbol FROM "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const trades = tables.find((s) => s.label === "trades")
+      const orders = tables.find((s) => s.label === "orders")
+      // trades has "symbol" → boosted; orders does not
+      expect(trades?.priority).toBe(SuggestionPriority.High)
+      expect(orders?.priority).toBe(SuggestionPriority.MediumLow)
+    })
+
+    it("qualified references from multiple aliases boost the correct tables", () => {
+      // c.symbol → symbol in trades; o.id → id in orders
+      const sql = "SELECT c.symbol, o.id FROM "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const trades = tables.find((s) => s.label === "trades")
+      const orders = tables.find((s) => s.label === "orders")
+      const users = tables.find((s) => s.label === "users")
+      expect(trades?.priority).toBe(SuggestionPriority.Medium) // partial: symbol but not id
+      expect(orders?.priority).toBe(SuggestionPriority.Medium) // partial: id but not symbol
+      expect(users?.priority).toBe(SuggestionPriority.MediumLow)
+    })
+
+    it("function calls are excluded from column inference", () => {
+      // "count()" is a function call — should not influence ranking
+      const sql = "SELECT count() FROM "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      for (const t of tables) {
+        expect(t.priority).toBe(SuggestionPriority.MediumLow)
+      }
+    })
+
+    it("all tables remain in the suggestion list even when some are boosted", () => {
+      const sql = "SELECT symbol, price FROM "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const tableLabels = suggestions
+        .filter((s) => s.kind === SuggestionKind.Table)
+        .map((s) => s.label)
+      expect(tableLabels).toContain("trades")
+      expect(tableLabels).toContain("orders")
+      expect(tableLabels).toContain("users")
+    })
+
+    it("boosts a single-column match correctly", () => {
+      // "status" only exists in orders
+      const sql = "SELECT status FROM "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const orders = tables.find((s) => s.label === "orders")
+      const trades = tables.find((s) => s.label === "trades")
+      expect(orders?.priority).toBe(SuggestionPriority.High)
+      expect(trades?.priority).toBe(SuggestionPriority.MediumLow)
+    })
+
+    it("SELECT * FROM does not boost any table (no referenced columns)", () => {
+      const sql = "SELECT * FROM "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      for (const t of tables) {
+        expect(t.priority).toBe(SuggestionPriority.MediumLow)
+      }
+    })
+  })
 })

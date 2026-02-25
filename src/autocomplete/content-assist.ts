@@ -80,6 +80,11 @@ export interface ContentAssistResult {
   suggestColumns: boolean
   /** Whether the grammar context expects table names (tableName positions, or expression context) */
   suggestTables: boolean
+  /**
+   * Bare column names (lowercase) referenced before the cursor in expression
+   * context. Used by the provider to boost tables containing all these columns.
+   */
+  referencedColumns: Set<string>
 }
 
 // =============================================================================
@@ -792,6 +797,81 @@ function inferTableFromQualifiedRef(
 }
 
 /**
+ * Extract bare column names referenced in expression context from a token list.
+ *
+ * Scans the tokens and collects identifier names that are likely column
+ * references, excluding:
+ * - Qualified identifiers (followed by a Dot token — table/alias qualifiers)
+ * - Middle segments of multi-part names (preceded AND followed by a Dot)
+ * - Known table names and aliases (matched against tableAndAliasSet)
+ * - Function calls (followed by a left-parenthesis token)
+ *
+ * @param tokens - Tokens to scan
+ * @param tableAndAliasSet - Lowercase table names and aliases already in scope
+ *   (built from tablesInScope by the caller). Identifiers matching any of these
+ *   are excluded because they are table/alias references, not column names.
+ *
+ * Returns a Set of lowercase column names for efficient lookup.
+ */
+export function extractReferencedColumns(
+  tokens: IToken[],
+  tableAndAliasSet: Set<string>,
+): Set<string> {
+  const result = new Set<string>()
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
+    const name = token.tokenType.name
+
+    // Only consider identifier-like tokens
+    if (
+      name !== "Identifier" &&
+      name !== "QuotedIdentifier" &&
+      !IDENTIFIER_KEYWORD_TOKENS.has(name)
+    ) {
+      continue
+    }
+
+    // Exclude: followed by Dot → this is a table/alias qualifier (e.g. "t1" in "t1.col")
+    if (i + 1 < tokens.length && tokens[i + 1].tokenType.name === "Dot") {
+      continue
+    }
+
+    // Exclude: preceded by Dot AND followed by Dot → middle segment of a multi-part name.
+    // But a trailing segment (preceded by Dot, NOT followed by Dot) IS a column name
+    // (e.g. "ecn" in "c.ecn") and should be included for table ranking.
+    if (
+      i > 0 &&
+      tokens[i - 1].tokenType.name === "Dot" &&
+      i + 1 < tokens.length &&
+      tokens[i + 1].tokenType.name === "Dot"
+    ) {
+      continue
+    }
+
+    // Exclude: followed by "(" → function call
+    if (i + 1 < tokens.length && tokens[i + 1].tokenType.name === "LParen") {
+      continue
+    }
+
+    const image =
+      name === "QuotedIdentifier" ? token.image.slice(1, -1) : token.image
+    const lower = image.toLowerCase()
+
+    // Exclude: matches a known table name or alias → this is a table reference,
+    // not a column name. This replaces the keyword-whitelist approach and is
+    // grammar-aware: tablesInScope is already built from the parsed AST.
+    if (tableAndAliasSet.has(lower)) {
+      continue
+    }
+
+    result.add(lower)
+  }
+
+  return result
+}
+
+/**
  * Get content assist suggestions for a SQL string at a given cursor position
  *
  * @param fullSql - The complete SQL string
@@ -825,6 +905,7 @@ export function getContentAssist(
         lexErrors: [],
         suggestColumns: false,
         suggestTables: false,
+        referencedColumns: new Set(),
       }
     }
   }
@@ -918,6 +999,21 @@ export function getContentAssist(
     tablesInScope.push(qualifiedRef)
   }
 
+  // Build a set of known table names and aliases so extractReferencedColumns
+  // can exclude them without a keyword whitelist.
+  const tableAndAliasSet = new Set<string>()
+  for (const t of tablesInScope) {
+    tableAndAliasSet.add(t.table.toLowerCase())
+    if (t.alias) tableAndAliasSet.add(t.alias.toLowerCase())
+  }
+
+  // Extract bare column references for table ranking (use tokensForAssist so
+  // a partial mid-word token isn't mistaken for a complete column name).
+  const referencedColumns = extractReferencedColumns(
+    tokensForAssist,
+    tableAndAliasSet,
+  )
+
   return {
     nextTokenTypes,
     tablesInScope,
@@ -928,6 +1024,7 @@ export function getContentAssist(
     qualifiedTableRef: qualifiedRef?.table,
     suggestColumns,
     suggestTables,
+    referencedColumns,
   }
 }
 
